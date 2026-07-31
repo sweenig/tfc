@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scout Meeting Planner - Portable</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy: #002868;
+      --navy-light: #1a3f80;
+      --red: #bf0a30;
+      --green: #1f6e3c;
+      --green-light: #e6f4ec;
+      --amber: #d97706;
+      --amber-light: #fef3c7;
+      --surface: #ffffff;
+      --bg: #f1f3f6;
+      --border: #dde1e7;
+      --text: #111827;
+      --muted: #6b7280;
+      --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .content {
+      padding: 16px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .alert {
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: 0.88rem;
+    }
+
+    .alert-ok { background: var(--green-light); color: #14532d; }
+    .alert-err { background: #fff0f0; color: #991b1b; }
+    .alert-inf { background: #eff6ff; color: #1e40af; }
+
+    .rank-selector { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+
+    .rank-pill {
+      padding: 6px 14px;
+      border-radius: 100px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+
+    .rank-pill.active {
+      background: var(--navy);
+      border-color: var(--navy);
+      color: #fff;
+    }
+
+    .rank-pill:hover:not(.active) {
+      border-color: var(--navy);
+      color: var(--navy);
+    }
+
+    .present-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      background: var(--green-light);
+      color: var(--green);
+      border-radius: 100px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .chip:hover { opacity: 0.8; }
+    .chip.absent { background: #fff0f0; color: var(--red); }
+
+    .section-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: 18px 0 8px;
+    }
+
+    .req-list { margin-top: 4px; }
+
+    .req-item {
+      background: var(--surface);
+      border-radius: 10px;
+      margin-bottom: 9px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    .req-header {
+      display: flex;
+      align-items: center;
+      padding: 13px 14px;
+      cursor: pointer;
+      gap: 12px;
+      user-select: none;
+    }
+
+    .req-header:active { background: var(--bg); }
+
+    .req-bubble {
+      min-width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.05rem;
+      flex-shrink: 0;
+    }
+
+    .bubble-high { background: var(--red); color: #fff; }
+    .bubble-med { background: var(--amber); color: #fff; }
+    .bubble-low { background: var(--amber-light); color: #92400e; }
+
+    .req-info { flex: 1; min-width: 0; }
+    .req-name { font-weight: 700; font-size: 0.92rem; }
+    .req-sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+
+    .req-chevron {
+      font-size: 1.1rem;
+      color: var(--border);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+
+    .req-item.open .req-chevron { transform: rotate(90deg); }
+
+    .req-scouts {
+      padding: 0 14px 13px 72px;
+      display: none;
+    }
+
+    .req-item.open .req-scouts { display: block; }
+
+    .req-scouts .tag {
+      display: inline-block;
+      background: var(--bg);
+      border-radius: 100px;
+      padding: 3px 10px;
+      margin: 3px 3px 3px 0;
+      font-size: 0.8rem;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 20px;
+      background: #fff;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.over {
+      border-color: var(--navy);
+      background: #f0f4ff;
+    }
+
+    .upload-zone .label { font-weight: 600; }
+    .upload-zone .hint { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+    #fileInput { display: none; }
+
+    .loading { text-align: center; padding: 32px; color: var(--muted); }
+
+    .hidden { display: none; }
+
+    @media (max-width: 640px) {
+      .content { padding: 12px; }
+      .req-scouts { padding-left: 14px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Requirements Identifier (Portable)</h1>
+</header>
+
+<div class="content">
+  <div id="mainAlert"></div>
+
+  <div class="card">
+    <div class="card-title">Session Start</div>
+    <div class="upload-zone" id="uploadZone">
+      <div class="label">Choose one or more ScoutBook CSV files</div>
+      <div class="hint">You can load multiple rank files at once. This app runs fully in your browser.</div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" multiple>
+  </div>
+
+  <div id="appBody" class="hidden">
+    <div class="rank-selector" id="rankSelector"></div>
+
+    <div class="card">
+      <div class="card-title">Present Tonight</div>
+      <div class="present-chips" id="presentChips"></div>
+    </div>
+
+    <div class="section-label">Requirements - ranked by need</div>
+    <div id="reqList" class="req-list"></div>
+  </div>
+
+  <div id="idleHelp" class="loading">Load CSV files to begin.</div>
+</div>
+
+<script>
+"use strict";
+
+const rankReports = new Map();
+let reportData = null;
+let presentScouts = new Set();
+let availableRanks = [];
+let currentRank = null;
+
+const RANK_RE = /^ReportBuilder_[^_]+_(.+)_(\d{8})\.csv$/i;
+
+function showAlert(targetId, type, html) {
+  const el = document.getElementById(targetId);
+  const cls = { ok: "alert-ok", err: "alert-err", inf: "alert-inf" }[type];
+  el.innerHTML = `<div class="alert ${cls}">${html}</div>`;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function extractRankInfo(filename) {
+  const match = filename.match(RANK_RE);
+  if (!match) return null;
+  let rank = match[1].replaceAll("_", " ");
+  if (rank === "Scout Rank") rank = "Scout";
+  return { rank, dateStr: match[2] };
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let i = 0;
+  let inQuotes = false;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (ch === "\r") {
+      // Ignore CR to support CRLF.
+    } else {
+      field += ch;
+    }
+
+    i += 1;
+  }
+
+  if (field.length || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows.filter(r => r.some(c => String(c).trim() !== ""));
+}
+
+function parseScoutbookReport(fileName, csvText) {
+  const rows = parseCsv(csvText);
+  if (rows.length < 7) {
+    throw new Error(`${fileName}: too few rows for a ScoutBook report.`);
+  }
+
+  const scouts = rows[0].slice(1).map(s => s.trim()).filter(Boolean);
+  if (!scouts.length) {
+    throw new Error(`${fileName}: no scout names found in first row.`);
+  }
+
+  const metaKeys = [
+    "age",
+    "current_rank",
+    "current_rank_date",
+    "first_class_pct",
+    "first_class_v2022_pct"
+  ];
+
+  const metadata = {};
+  for (let i = 0; i < metaKeys.length; i += 1) {
+    const row = rows[i + 1] || [];
+    metadata[metaKeys[i]] = {};
+    for (let j = 0; j < scouts.length; j += 1) {
+      metadata[metaKeys[i]][scouts[j]] = (row[j + 1] || "").trim();
+    }
+  }
+
+  const requirements = [];
+  for (const r of rows.slice(6)) {
+    const reqName = (r[0] || "").trim();
+    if (!reqName) continue;
+
+    const completed = {};
+    for (let j = 0; j < scouts.length; j += 1) {
+      completed[scouts[j]] = Boolean((r[j + 1] || "").trim());
+    }
+
+    requirements.push({ name: reqName, completed });
+  }
+
+  return {
+    scouts,
+    metadata,
+    requirements,
+    source_file: fileName
+  };
+}
+
+function renderRankSelector() {
+  const selector = document.getElementById("rankSelector");
+  selector.innerHTML = availableRanks
+    .map(r => `<button class="rank-pill${r.rank === currentRank ? " active" : ""}" data-rank="${escHtml(r.rank)}">${escHtml(r.rank)}</button>`)
+    .join("");
+
+  document.querySelectorAll(".rank-pill").forEach(btn => {
+    btn.addEventListener("click", () => selectRank(btn.dataset.rank));
+  });
+}
+
+function selectRank(rank) {
+  currentRank = rank;
+  reportData = rankReports.get(rank)?.report || null;
+  if (!reportData) {
+    showAlert("mainAlert", "err", `No report loaded for rank ${escHtml(rank)}.`);
+    return;
+  }
+  presentScouts = new Set(reportData.scouts);
+  renderRankSelector();
+  render();
+}
+
+function render() {
+  if (!reportData) return;
+
+  const present = Array.from(presentScouts);
+
+  const scored = reportData.requirements
+    .map(req => {
+      const needed = present.filter(s => !req.completed[s]);
+      return { name: req.name, count: needed.length, total: present.length, scouts: needed };
+    })
+    .filter(r => r.count > 0)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  document.getElementById("presentChips").innerHTML = reportData.scouts
+    .map(s => `<span class="chip${presentScouts.has(s) ? "" : " absent"}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`)
+    .join("");
+
+  document.querySelectorAll("#presentChips .chip").forEach(chip => {
+    chip.addEventListener("click", () => toggleScout(chip.dataset.scout));
+  });
+
+  const list = document.getElementById("reqList");
+  if (!scored.length) {
+    list.innerHTML = `<div class="card" style="text-align:center;color:var(--green);font-weight:700;padding:24px">All present scouts have completed all listed requirements.</div>`;
+    return;
+  }
+
+  list.innerHTML = scored.map(r => {
+    const pct = r.total ? r.count / r.total : 0;
+    const bubble = pct >= 0.6 ? "bubble-high" : pct >= 0.35 ? "bubble-med" : "bubble-low";
+    const tags = r.scouts.map(s => `<span class="tag">${escHtml(s)}</span>`).join("");
+
+    return `
+      <div class="req-item" onclick="toggleReq(this)">
+        <div class="req-header">
+          <div class="req-bubble ${bubble}">${r.count}</div>
+          <div class="req-info">
+            <div class="req-name">${escHtml(r.name)}</div>
+            <div class="req-sub">${r.count} of ${r.total} present scouts still need this</div>
+          </div>
+          <span class="req-chevron">&gt;</span>
+        </div>
+        <div class="req-scouts"><strong>Needs:</strong> ${tags}</div>
+      </div>`;
+  }).join("");
+}
+
+function toggleScout(name) {
+  if (presentScouts.has(name)) {
+    presentScouts.delete(name);
+  } else {
+    presentScouts.add(name);
+  }
+  render();
+}
+
+function toggleReq(item) {
+  item.classList.toggle("open");
+}
+
+async function loadFiles(files) {
+  const list = Array.from(files || []);
+  if (!list.length) return;
+
+  showAlert("mainAlert", "inf", "Loading CSV files...");
+
+  rankReports.clear();
+
+  try {
+    for (const file of list) {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        throw new Error(`${file.name}: only .csv files are supported.`);
+      }
+
+      const info = extractRankInfo(file.name);
+      if (!info) {
+        throw new Error(`${file.name}: filename does not match ReportBuilder pattern.`);
+      }
+
+      const text = await file.text();
+      const report = parseScoutbookReport(file.name, text);
+
+      const existing = rankReports.get(info.rank);
+      if (!existing || info.dateStr > existing.dateStr) {
+        rankReports.set(info.rank, { dateStr: info.dateStr, report });
+      }
+    }
+
+    availableRanks = Array.from(rankReports.entries()).map(([rank, value]) => ({ rank, date: value.dateStr }));
+
+    const rankOrder = ["Scout", "Tenderfoot", "Second Class", "First Class"];
+    availableRanks.sort((a, b) => {
+      const ai = rankOrder.indexOf(a.rank);
+      const bi = rankOrder.indexOf(b.rank);
+      const an = ai === -1 ? 999 : ai;
+      const bn = bi === -1 ? 999 : bi;
+      return an - bn || a.rank.localeCompare(b.rank);
+    });
+
+    if (!availableRanks.length) {
+      throw new Error("No valid rank reports detected in selected files.");
+    }
+
+    currentRank = availableRanks[0].rank;
+    reportData = rankReports.get(currentRank).report;
+    presentScouts = new Set(reportData.scouts);
+
+    document.getElementById("idleHelp").classList.add("hidden");
+    document.getElementById("appBody").classList.remove("hidden");
+
+    renderRankSelector();
+    render();
+
+    showAlert("mainAlert", "ok", `Loaded ${list.length} file(s). Active rank: <strong>${escHtml(currentRank)}</strong>.`);
+  } catch (err) {
+    document.getElementById("appBody").classList.add("hidden");
+    document.getElementById("idleHelp").classList.remove("hidden");
+    showAlert("mainAlert", "err", escHtml(err.message || "Failed to load files."));
+  }
+}
+
+function wireUpload() {
+  const zone = document.getElementById("uploadZone");
+  const input = document.getElementById("fileInput");
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", e => loadFiles(e.target.files));
+
+  zone.addEventListener("dragover", e => {
+    e.preventDefault();
+    zone.classList.add("over");
+  });
+
+  zone.addEventListener("dragleave", () => {
+    zone.classList.remove("over");
+  });
+
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("over");
+    if (e.dataTransfer.files?.length) {
+      loadFiles(e.dataTransfer.files);
+    }
+  });
+}
+
+wireUpload();
+</script>
+</body>
+</html>
