@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Troop Planner">
+  <title>Scout Meeting Planner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:        #002868;
+      --navy-light:  #1a3f80;
+      --red:         #BF0A30;
+      --green:       #1f6e3c;
+      --green-light: #e6f4ec;
+      --amber:       #d97706;
+      --amber-light: #fef3c7;
+      --surface:     #ffffff;
+      --bg:          #f1f3f6;
+      --border:      #dde1e7;
+      --text:        #111827;
+      --muted:       #6b7280;
+      --shadow:      0 2px 10px rgba(0,0,0,.10);
+      --radius:      12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header h1 { font-size: 1.15rem; font-weight: 700; }
+    header .sub { font-size: .75rem; opacity: .75; }
+    #headerBadge {
+      background: rgba(255,255,255,.15);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-size: .8rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* ── Views ──────────────────────────────────────────────────────── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .content {
+      padding: 16px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    /* ── Cards ──────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 14px 20px;
+      border-radius: 10px;
+      border: none;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      width: 100%;
+    }
+    .btn:active { transform: scale(.97); opacity: .9; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    .btn-primary { background: var(--navy); color: #fff; }
+    .btn-green   { background: var(--green); color: #fff; }
+    .btn-ghost   {
+      background: transparent;
+      color: var(--navy);
+      border: 2px solid var(--border);
+      width: auto;
+      padding: 8px 16px;
+      font-size: .85rem;
+    }
+    .btn-back {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 6px 0;
+      opacity: .85;
+    }
+    .btn-back:active { opacity: 1; }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row .btn { flex: 1; }
+
+    /* ── Upload area ─────────────────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .upload-zone:hover, .upload-zone.over {
+      border-color: var(--navy);
+      background: #f0f4ff;
+    }
+    .upload-zone .icon { font-size: 2rem; margin-bottom: 6px; }
+    .upload-zone .label { font-weight: 600; }
+    .upload-zone .hint { font-size: .82rem; color: var(--muted); margin-top: 4px; }
+    #fileInput { display: none; }
+
+    /* ── Alert banners ───────────────────────────────────────────────── */
+    .alert {
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: .88rem;
+    }
+    .alert-ok  { background: var(--green-light); color: #14532d; }
+    .alert-err { background: #fff0f0; color: #991b1b; }
+    .alert-inf { background: #eff6ff; color: #1e40af; }
+
+    /* ── Report info ─────────────────────────────────────────────────── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .info-cell { font-size: .88rem; }
+    .info-cell .val { font-weight: 700; color: var(--navy); font-size: 1.1rem; }
+
+    /* ── Scout grid ──────────────────────────────────────────────────── */
+    .attendance-bar {
+      background: var(--navy);
+      color: #fff;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: .95rem;
+      position: sticky;
+      top: 56px;   /* below header */
+      z-index: 90;
+    }
+
+    .scout-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+      gap: 10px;
+    }
+
+    .scout-btn {
+      padding: 16px 10px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      text-align: center;
+      font-size: .9rem;
+      font-weight: 600;
+      line-height: 1.35;
+      transition: all .15s;
+      color: var(--text);
+    }
+    .scout-btn .rank { display: block; font-size: .7rem; font-weight: 400; color: var(--muted); margin-top: 3px; }
+    .scout-btn.present {
+      background: var(--green-light);
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .scout-btn.present .rank { color: var(--green); opacity: .75; }
+    .scout-btn:active { transform: scale(.95); }
+
+    /* ── Date input ──────────────────────────────────────────────────── */
+    .date-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      color: var(--text);
+      background: var(--surface);
+      margin-bottom: 12px;
+    }
+    .date-input:focus { outline: none; border-color: var(--navy); }
+
+    /* ── Results ─────────────────────────────────────────────────────── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .stat-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+    .stat-box .stat-val { font-size: 2rem; font-weight: 800; }
+    .stat-box .stat-lbl { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+    .stat-box.navy .stat-val { color: var(--navy); }
+    .stat-box.red  .stat-val { color: var(--red);  }
+
+    .present-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+    .chip {
+      background: var(--green-light);
+      color: var(--green);
+      border-radius: 100px;
+      padding: 3px 10px;
+      font-size: .78rem;
+      font-weight: 600;
+    }
+    .chip.navy-chip { background: #e8eeff; color: var(--navy); }
+
+    .req-list { margin-top: 4px; }
+
+    .req-item {
+      background: var(--surface);
+      border-radius: 10px;
+      margin-bottom: 9px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .req-header {
+      display: flex;
+      align-items: center;
+      padding: 13px 14px;
+      cursor: pointer;
+      gap: 12px;
+      user-select: none;
+    }
+    .req-header:active { background: var(--bg); }
+
+    .req-bubble {
+      min-width: 46px; height: 46px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1.05rem;
+      flex-shrink: 0;
+    }
+    .bubble-high   { background: var(--red);   color: #fff; }
+    .bubble-med    { background: var(--amber);  color: #fff; }
+    .bubble-low    { background: var(--amber-light); color: #92400e; }
+
+    .req-info { flex: 1; min-width: 0; }
+    .req-name { font-weight: 700; font-size: .92rem; }
+    .req-sub  { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+
+    .req-chevron {
+      font-size: 1.1rem;
+      color: var(--border);
+      transition: transform .2s;
+      flex-shrink: 0;
+    }
+    .req-item.open .req-chevron { transform: rotate(90deg); }
+
+    .req-scouts {
+      padding: 0 14px 13px 72px;
+      display: none;
+    }
+    .req-item.open .req-scouts { display: block; }
+    .req-scouts .tag {
+      display: inline-block;
+      background: var(--bg);
+      border-radius: 100px;
+      padding: 3px 10px;
+      margin: 3px 3px 3px 0;
+      font-size: .8rem;
+    }
+
+    /* ── History ─────────────────────────────────────────────────────── */
+    .meeting-row {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .meeting-row:last-child { border-bottom: none; }
+    .meeting-date { font-weight: 700; font-size: .9rem; }
+    .meeting-count { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    .meeting-names { font-size: .78rem; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+    /* ── Loading ─────────────────────────────────────────────────────── */
+    .loading { text-align: center; padding: 32px; color: var(--muted); }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--navy);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .section-label {
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin: 18px 0 8px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<header>
+  <div>
+    <div class="sub">BSA Troop Meeting Tool</div>
+    <h1>Scout Meeting Planner</h1>
+  </div>
+  <div id="headerBadge">Home</div>
+</header>
+
+<!-- ═══════════════════════ VIEW: HOME ═══════════════════════ -->
+<div id="viewHome" class="view active">
+  <div class="content">
+
+    <div id="homeAlert"></div>
+
+    <div class="card">
+      <div class="card-title">Current Report</div>
+      <div id="reportInfo" class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Upload New Report</div>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📄</div>
+        <div class="label">Tap to choose CSV</div>
+        <div class="hint">Download from ScoutBook, then select it here</div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv">
+    </div>
+
+    <button class="btn btn-primary" onclick="startMeeting()">▶&nbsp; Start Meeting</button>
+
+    <div class="section-label">Past Meetings</div>
+    <div class="card" style="padding-bottom:6px">
+      <div id="historyList"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════ VIEW: ATTENDANCE ═══════════════════════ -->
+<div id="viewAttendance" class="view">
+
+  <div class="attendance-bar">
+    <span id="attendanceCount">0 scouts present</span>
+    <button class="btn-back" onclick="showView('home')">← Home</button>
+  </div>
+
+  <div class="content">
+
+    <div class="card">
+      <div class="card-title">Meeting Date</div>
+      <input type="date" id="meetingDate" class="date-input">
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="selectAll()">Select All</button>
+        <button class="btn btn-ghost" onclick="clearAll()">Clear All</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Who's Here Tonight?</div>
+      <div class="scout-grid" id="scoutGrid"></div>
+    </div>
+
+    <button class="btn btn-green" id="getRecsBtn" onclick="goToResults()" disabled>
+      See Recommendations →
+    </button>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════ VIEW: RESULTS ═══════════════════════ -->
+<div id="viewResults" class="view">
+
+  <div class="attendance-bar">
+    <span id="resultsSummaryBar"></span>
+    <button class="btn-back" onclick="showView('attendance')">← Attendance</button>
+  </div>
+
+  <div class="content" style="padding-top:14px">
+
+    <div class="summary-grid">
+      <div class="stat-box navy">
+        <div class="stat-val" id="statPresent">—</div>
+        <div class="stat-lbl">scouts present</div>
+      </div>
+      <div class="stat-box red">
+        <div class="stat-val" id="statGaps">—</div>
+        <div class="stat-lbl">requirements with gaps</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding-bottom:10px">
+      <div class="card-title">Present Tonight</div>
+      <div class="present-chips" id="presentChips"></div>
+    </div>
+
+    <div class="section-label">Requirements — ranked by need</div>
+    <div id="reqList" class="req-list"></div>
+
+    <div style="margin-top: 6px;">
+      <button class="btn btn-primary" id="saveBtn" onclick="saveAttendance()">
+        💾&nbsp; Save Attendance Record
+      </button>
+      <div id="saveAlert" style="margin-top:8px"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════ SCRIPT ═══════════════════════ -->
+<script>
+"use strict";
+
+let reportData   = null;
+let presentScouts = new Set();
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+  document.getElementById("meetingDate").value = today;
+
+  await Promise.all([loadReport(), loadHistory()]);
+  wireUpload();
+}
+
+// ── Report ────────────────────────────────────────────────────────────────────
+
+async function loadReport() {
+  try {
+    const res  = await fetch("/api/report");
+    if (!res.ok) throw new Error((await res.json()).detail);
+    reportData = await res.json();
+    renderReportInfo();
+  } catch (e) {
+    document.getElementById("reportInfo").innerHTML =
+      `<span style="color:var(--red);font-size:.9rem">⚠ ${e.message}</span>`;
+  }
+}
+
+function renderReportInfo() {
+  if (!reportData) return;
+  const match = reportData.source_file.match(/(\d{8})\.csv$/i);
+  let dateStr = "unknown";
+  if (match) {
+    const r = match[1];
+    dateStr = new Date(`${r.slice(0,4)}-${r.slice(4,6)}-${r.slice(6,8)}T12:00:00`)
+      .toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  }
+  document.getElementById("reportInfo").innerHTML = `
+    <div class="info-grid">
+      <div class="info-cell"><div class="val">${reportData.scouts.length}</div>scouts</div>
+      <div class="info-cell"><div class="val">${reportData.requirements.length}</div>requirements</div>
+    </div>
+    <div style="margin-top:10px;font-size:.82rem;color:var(--muted)">
+      Report date: <strong>${dateStr}</strong><br>
+      File: ${reportData.source_file}
+    </div>
+  `;
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+
+function wireUpload() {
+  const zone  = document.getElementById("uploadZone");
+  const input = document.getElementById("fileInput");
+
+  input.addEventListener("change", e => handleFile(e.target.files[0]));
+
+  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("over"); });
+  zone.addEventListener("dragleave", ()  => zone.classList.remove("over"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("over");
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+}
+
+async function handleFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith(".csv")) {
+    showAlert("homeAlert", "err", "Please select a .csv file.");
+    return;
+  }
+
+  showAlert("homeAlert", "inf", "Uploading…");
+
+  const form = new FormData();
+  form.append("file", file);
+
+  try {
+    const res  = await fetch("/api/upload", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Upload failed");
+
+    showAlert("homeAlert", "ok", `✓ Uploaded <strong>${file.name}</strong> — ${data.scouts} scouts loaded.`);
+    document.getElementById("fileInput").value = "";
+    await loadReport();
+  } catch (e) {
+    showAlert("homeAlert", "err", `✗ ${e.message}`);
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+
+async function loadHistory() {
+  const el = document.getElementById("historyList");
+  try {
+    const res      = await fetch("/api/attendance");
+    const meetings = await res.json();
+
+    if (!meetings.length) {
+      el.innerHTML = '<div style="font-size:.88rem;color:var(--muted)">No meetings recorded yet.</div>';
+      return;
+    }
+
+    el.innerHTML = meetings.map(m => {
+      const d = new Date(m.date + "T12:00:00").toLocaleDateString("en-US",
+        { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+      return `
+        <div class="meeting-row">
+          <div class="meeting-date">${d}</div>
+          <div class="meeting-count">${m.count} scouts present</div>
+          <div class="meeting-names">${m.scouts.join(", ")}</div>
+        </div>`;
+    }).join("");
+
+  } catch (_) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.88rem">Unable to load history.</div>';
+  }
+}
+
+// ── Attendance ────────────────────────────────────────────────────────────────
+
+function startMeeting() {
+  if (!reportData) {
+    showAlert("homeAlert", "err", "Upload a report first.");
+    return;
+  }
+  presentScouts.clear();
+  buildScoutGrid();
+  updateCount();
+  showView("attendance");
+}
+
+function buildScoutGrid() {
+  const grid = document.getElementById("scoutGrid");
+  grid.innerHTML = "";
+  reportData.scouts.forEach(name => {
+    const rank = reportData.metadata?.current_rank?.[name] || "";
+    const btn  = document.createElement("button");
+    btn.className     = "scout-btn";
+    btn.dataset.scout = name;
+    btn.innerHTML     = `${name}<span class="rank">${rank || "Scout"}</span>`;
+    btn.addEventListener("click", () => toggleScout(name, btn));
+    grid.appendChild(btn);
+  });
+}
+
+function toggleScout(name, btn) {
+  if (presentScouts.has(name)) {
+    presentScouts.delete(name);
+    btn.classList.remove("present");
+  } else {
+    presentScouts.add(name);
+    btn.classList.add("present");
+  }
+  updateCount();
+}
+
+function updateCount() {
+  const n = presentScouts.size;
+  document.getElementById("attendanceCount").textContent =
+    `${n} scout${n !== 1 ? "s" : ""} present`;
+  document.getElementById("getRecsBtn").disabled = n === 0;
+}
+
+function selectAll() {
+  reportData.scouts.forEach(n => presentScouts.add(n));
+  document.querySelectorAll(".scout-btn").forEach(b => b.classList.add("present"));
+  updateCount();
+}
+
+function clearAll() {
+  presentScouts.clear();
+  document.querySelectorAll(".scout-btn").forEach(b => b.classList.remove("present"));
+  updateCount();
+}
+
+// ── Recommendations ───────────────────────────────────────────────────────────
+
+function goToResults() {
+  const present = Array.from(presentScouts);
+
+  // Score each requirement: count present scouts who haven't completed it
+  const scored = reportData.requirements
+    .map(req => {
+      const needed = present.filter(s => !req.completed[s]);
+      return { name: req.name, count: needed.length, total: present.length, scouts: needed };
+    })
+    .filter(r => r.count > 0)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  renderResults(present, scored);
+  showView("results");
+}
+
+function renderResults(present, scored) {
+  document.getElementById("statPresent").textContent = present.length;
+  document.getElementById("statGaps").textContent    = scored.length;
+  document.getElementById("resultsSummaryBar").textContent =
+    `${present.length} present · ${scored.length} gaps`;
+
+  document.getElementById("presentChips").innerHTML =
+    present.map(s => `<span class="chip">${s}</span>`).join("");
+
+  const list = document.getElementById("reqList");
+  if (!scored.length) {
+    list.innerHTML = `<div class="card" style="text-align:center;color:var(--green);font-weight:700;padding:24px">
+      🎉 Everyone present has completed all requirements!
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = scored.map(r => {
+    const pct    = r.count / r.total;
+    const bubble = pct >= 0.6 ? "bubble-high" : pct >= 0.35 ? "bubble-med" : "bubble-low";
+    const tags   = r.scouts.map(s => `<span class="tag">${s}</span>`).join("");
+    return `
+      <div class="req-item" onclick="toggleReq(this)">
+        <div class="req-header">
+          <div class="req-bubble ${bubble}">${r.count}</div>
+          <div class="req-info">
+            <div class="req-name">${r.name}</div>
+            <div class="req-sub">${r.count} of ${r.total} present scouts still need this</div>
+          </div>
+          <span class="req-chevron">›</span>
+        </div>
+        <div class="req-scouts"><strong>Needs:</strong> ${tags}</div>
+      </div>`;
+  }).join("");
+
+  // Reset save button
+  const saveBtn = document.getElementById("saveBtn");
+  saveBtn.disabled    = false;
+  saveBtn.textContent = "💾  Save Attendance Record";
+  document.getElementById("saveAlert").innerHTML = "";
+}
+
+function toggleReq(item) {
+  item.classList.toggle("open");
+}
+
+// ── Save attendance ───────────────────────────────────────────────────────────
+
+async function saveAttendance() {
+  const btn  = document.getElementById("saveBtn");
+  const date = document.getElementById("meetingDate").value;
+
+  btn.disabled    = true;
+  btn.textContent = "Saving…";
+
+  try {
+    const res = await fetch("/api/attendance", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ date, present: Array.from(presentScouts) }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || "Save failed");
+
+    btn.textContent = "✓ Saved";
+    showAlert("saveAlert", "ok", "Attendance record saved!");
+    loadHistory(); // refresh history in background
+  } catch (e) {
+    btn.disabled    = false;
+    btn.textContent = "💾  Save Attendance Record";
+    showAlert("saveAlert", "err", `Failed to save: ${e.message}`);
+  }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function showView(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  const id = "view" + name.charAt(0).toUpperCase() + name.slice(1);
+  document.getElementById(id).classList.add("active");
+
+  const labels = { home: "Home", attendance: "Attendance", results: "Recommendations" };
+  document.getElementById("headerBadge").textContent = labels[name] ?? name;
+
+  window.scrollTo(0, 0);
+}
+
+function showAlert(targetId, type, html) {
+  const el = document.getElementById(targetId);
+  const cls = { ok: "alert-ok", err: "alert-err", inf: "alert-inf" }[type];
+  el.innerHTML = `<div class="alert ${cls}">${html}</div>`;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

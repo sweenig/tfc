@@ -1,0 +1,27 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: tfc-planner
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+
+  tfc-app:
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+    network_mode: "service:tailscale"
+    depends_on:
+      - tailscale
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:

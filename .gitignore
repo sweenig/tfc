@@ -1,0 +1,9 @@
+# Environment — contains Tailscale auth key
+.env
+
+# Scout data — contains PII (names, ages, ranks, attendance)
+data/*.csv
+data/*.db
+
+# Keep the data directory itself tracked so Docker mounts it correctly
+!data/.gitkeep
