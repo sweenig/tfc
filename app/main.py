@@ -1,48 +1,12 @@
 import csv
 import re
-import sqlite3
-import shutil
-from contextlib import asynccontextmanager
-from datetime import date
 from pathlib import Path
-from typing import List
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
 
 DATA_DIR = Path("data")
-DB_PATH = DATA_DIR / "attendance.db"
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB ceiling — scout CSVs are tiny
-
-
-# ── Database ─────────────────────────────────────────────────────────────────
-
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db() -> None:
-    DATA_DIR.mkdir(exist_ok=True)
-    with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS meetings (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                meeting_date TEXT    NOT NULL,
-                notes        TEXT    DEFAULT ''
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS attendance (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                meeting_id INTEGER NOT NULL REFERENCES meetings(id),
-                scout_name TEXT    NOT NULL
-            )
-        """)
-        conn.commit()
 
 
 # ── CSV helpers ───────────────────────────────────────────────────────────────
@@ -107,37 +71,7 @@ def parse_csv(filepath: Path) -> dict:
     }
 
 
-# ── App lifespan ──────────────────────────────────────────────────────────────
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    yield
-
-
-app = FastAPI(title="Scout Meeting Planner", lifespan=lifespan)
-
-
-# ── Pydantic models ───────────────────────────────────────────────────────────
-
-class AttendancePayload(BaseModel):
-    date: str
-    present: List[str]
-    notes: str = ""
-
-    @field_validator("date")
-    @classmethod
-    def validate_date(cls, v: str) -> str:
-        import datetime
-        datetime.date.fromisoformat(v)  # raises ValueError on bad format
-        return v
-
-    @field_validator("present")
-    @classmethod
-    def validate_present(cls, v: List[str]) -> List[str]:
-        if len(v) > 200:
-            raise ValueError("Too many scouts in payload")
-        return [s.strip()[:120] for s in v if s.strip()]
+app = FastAPI(title="Scout Meeting Planner")
 
 
 # ── API routes ────────────────────────────────────────────────────────────────
@@ -180,50 +114,6 @@ async def upload_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=f"Invalid file: {exc}")
 
     return {"message": f"Uploaded {dest.name}", "scouts": len(data["scouts"])}
-
-
-@app.post("/api/attendance", status_code=201)
-async def save_attendance(payload: AttendancePayload):
-    with get_db() as conn:
-        cursor = conn.execute(
-            "INSERT INTO meetings (meeting_date, notes) VALUES (?, ?)",
-            (payload.date, payload.notes),
-        )
-        meeting_id = cursor.lastrowid
-        conn.executemany(
-            "INSERT INTO attendance (meeting_id, scout_name) VALUES (?, ?)",
-            [(meeting_id, name) for name in payload.present],
-        )
-        conn.commit()
-    return {"meeting_id": meeting_id, "saved": len(payload.present)}
-
-
-@app.get("/api/attendance")
-async def get_attendance_history():
-    with get_db() as conn:
-        meetings = conn.execute("""
-            SELECT m.id, m.meeting_date, m.notes, COUNT(a.id) AS count
-            FROM meetings m
-            LEFT JOIN attendance a ON a.meeting_id = m.id
-            GROUP BY m.id
-            ORDER BY m.meeting_date DESC
-            LIMIT 30
-        """).fetchall()
-
-        result = []
-        for m in meetings:
-            scouts = conn.execute(
-                "SELECT scout_name FROM attendance WHERE meeting_id = ? ORDER BY scout_name",
-                (m["id"],),
-            ).fetchall()
-            result.append({
-                "id": m["id"],
-                "date": m["meeting_date"],
-                "notes": m["notes"],
-                "count": m["count"],
-                "scouts": [r["scout_name"] for r in scouts],
-            })
-    return result
 
 
 # ── Static files (served last so API routes take priority) ───────────────────
