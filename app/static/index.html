@@ -84,6 +84,26 @@
     .alert-err { background: #fff0f0; color: #991b1b; }
     .alert-inf { background: #eff6ff; color: #1e40af; }
 
+    /* ── Rank selector ────────────────────────────────────────────────── */
+    .rank-selector { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .rank-pill {
+      padding: 6px 14px;
+      border-radius: 100px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      font-size: .82rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all .15s;
+    }
+    .rank-pill.active {
+      background: var(--navy);
+      border-color: var(--navy);
+      color: #fff;
+    }
+    .rank-pill:hover:not(.active) { border-color: var(--navy); color: var(--navy); }
+
     /* ── Present chips ───────────────────────────────────────────────── */
     .present-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
 
@@ -242,6 +262,8 @@
 
       <div id="mainAlert"></div>
 
+      <div class="rank-selector" id="rankSelector"></div>
+
       <div class="card">
         <div class="card-title">Present Tonight</div>
         <div class="present-chips" id="presentChips"></div>
@@ -268,28 +290,54 @@
 <script>
 "use strict";
 
-let reportData    = null;
-let presentScouts = new Set();
+let reportData     = null;
+let presentScouts  = new Set();
+let availableRanks = [];
+let currentRank    = null;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
   try {
-    const res = await fetch("/api/report");
-    if (!res.ok) throw new Error((await res.json()).detail);
-    reportData = await res.json();
+    const res = await fetch("/api/ranks");
+    availableRanks = await res.json();
+    if (!availableRanks.length) throw new Error("No report files found. Upload a CSV to get started.");
 
-    // Default: all scouts present
-    reportData.scouts.forEach(s => presentScouts.add(s));
+    currentRank = availableRanks[0].rank;
+    await loadReport();
 
     document.getElementById("loadingState").style.display = "none";
     document.getElementById("appBody").style.display      = "block";
+    renderRankSelector();
     render();
   } catch (e) {
     document.getElementById("loadingState").innerHTML =
       `<div style="color:var(--red);font-size:.9rem;padding:32px">⚠ ${escHtml(e.message)}</div>`;
   }
   wireUpload();
+}
+
+async function loadReport() {
+  const res = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
+  if (!res.ok) throw new Error((await res.json()).detail);
+  reportData = await res.json();
+  presentScouts = new Set(reportData.scouts);
+}
+
+function renderRankSelector() {
+  document.getElementById("rankSelector").innerHTML = availableRanks
+    .map(r => `<button class="rank-pill${r.rank === currentRank ? ' active' : ''}" data-rank="${escHtml(r.rank)}">${escHtml(r.rank)}</button>`)
+    .join("");
+  document.querySelectorAll(".rank-pill").forEach(btn =>
+    btn.addEventListener("click", () => selectRank(btn.dataset.rank))
+  );
+}
+
+async function selectRank(rank) {
+  currentRank = rank;
+  await loadReport();
+  renderRankSelector();
+  render();
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -392,9 +440,12 @@ async function handleFile(file) {
     document.getElementById("fileInput").value = "";
     document.getElementById("uploadZone").classList.remove("visible");
 
-    const rRes = await fetch("/api/report");
+    const rRes = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
     reportData    = await rRes.json();
     presentScouts = new Set(reportData.scouts);
+    const ranksRes = await fetch("/api/ranks");
+    availableRanks = await ranksRes.json();
+    renderRankSelector();
     render();
     showAlert("mainAlert", "ok", `✓ Uploaded <strong>${escHtml(file.name)}</strong> — ${data.scouts} scouts loaded.`);
   } catch (e) {

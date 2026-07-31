@@ -8,8 +8,23 @@ from fastapi.staticfiles import StaticFiles
 DATA_DIR = Path("data")
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB ceiling — scout CSVs are tiny
 
+# ReportBuilder_<Unit>_<Rank_Parts>_<YYYYMMDD>.csv
+_RANK_RE = re.compile(r'^ReportBuilder_[^_]+_(.+)_(\d{8})\.csv$', re.IGNORECASE)
+
 
 # ── CSV helpers ───────────────────────────────────────────────────────────────
+
+def extract_rank_info(filename: str) -> tuple[str, str] | None:
+    """Return (rank_label, date_str) or None if filename doesn't match."""
+    m = _RANK_RE.match(filename)
+    if not m:
+        return None
+    rank = m.group(1).replace('_', ' ')
+    # ScoutBook names the file "Scout Rank" but the rank is just "Scout"
+    if rank == "Scout Rank":
+        rank = "Scout"
+    return rank, m.group(2)
+
 
 def get_latest_csv() -> Path | None:
     files = list(DATA_DIR.glob("*.csv"))
@@ -76,11 +91,40 @@ app = FastAPI(title="Scout Meeting Planner")
 
 # ── API routes ────────────────────────────────────────────────────────────────
 
+@app.get("/api/ranks")
+async def get_ranks():
+    best: dict[str, tuple[Path, str]] = {}
+    for f in DATA_DIR.glob("*.csv"):
+        info = extract_rank_info(f.name)
+        if not info:
+            continue
+        rank, date_str = info
+        if rank not in best or date_str > best[rank][1]:
+            best[rank] = (f, date_str)
+    rank_order = ["Scout", "Tenderfoot", "Second Class", "First Class"]
+    def rank_key(item):
+        try:
+            return rank_order.index(item[0])
+        except ValueError:
+            return len(rank_order)
+    return [{"rank": k, "date": v[1]} for k, v in sorted(best.items(), key=rank_key)]
+
+
 @app.get("/api/report")
-async def get_report():
-    csv_file = get_latest_csv()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="No report file found. Upload a CSV to get started.")
+async def get_report(rank: str | None = None):
+    if rank:
+        best_file, best_date = None, ""
+        for f in DATA_DIR.glob("*.csv"):
+            info = extract_rank_info(f.name)
+            if info and info[0] == rank and info[1] > best_date:
+                best_file, best_date = f, info[1]
+        if not best_file:
+            raise HTTPException(status_code=404, detail=f"No report found for rank: {rank}")
+        csv_file = best_file
+    else:
+        csv_file = get_latest_csv()
+        if not csv_file:
+            raise HTTPException(status_code=404, detail="No report file found. Upload a CSV to get started.")
     try:
         return parse_csv(csv_file)
     except Exception as exc:
