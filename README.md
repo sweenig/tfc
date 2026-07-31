@@ -1,30 +1,30 @@
 # Scout Meeting Planner
 
-A self-hosted web app for BSA troop leaders. Pull up the app at a meeting, mark who showed up, and instantly see which First Class requirements are needed by the most scouts present — so you can plan the night around the scouts who are actually there.
+A web app for BSA troop leaders. Pull it up at a meeting, mark who showed up, and instantly see which requirements are needed by the most scouts present so you can plan the night around who is actually there.
 
-Runs in Docker and is accessible only through [Tailscale](https://tailscale.com), keeping all scout data (names, ages, ranks, attendance) off the public internet.
+This project now supports multiple deployment models: private Docker + [Tailscale](https://tailscale.com), local Wi-Fi hosting (for example on a Raspberry Pi), and a fully static GitHub Pages mode using a standalone HTML app.
 
 ## Features
 
-- **Upload reports** — download a CSV from ScoutBook/Scoutmaster, upload it in the app; the most recent file is always used automatically
-- **Take attendance** — tap scout names to mark who's present
-- **Ranked recommendations** — requirements sorted by how many present scouts still need them, with the specific scouts listed
-- **Attendance history** — past meetings are saved locally in SQLite for reference
+- **Upload reports** — load ScoutBook CSV exports in-app
+- **Take attendance quickly** — tap scout chips to mark present/absent
+- **Ranked recommendations** — requirements sorted by how many present scouts still need them, with names listed per requirement
+- **Two app modes** — backend-assisted mode (`index.html`) and fully portable client-only mode (`portable.html`)
 
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Backend | Python · FastAPI · SQLite |
+| Backend | Python · FastAPI |
 | Frontend | Vanilla JS · single HTML file · no build step |
 | Runtime | Docker Compose |
-| Private access | Tailscale (VPN — no public internet exposure) |
+| Optional private access | Tailscale (VPN — no public internet exposure) |
 
 ## Prerequisites
 
-- Docker + Docker Compose
-- A free [Tailscale](https://tailscale.com) account
-- Tailscale installed on any device that will access the app (phone, tablet, etc.)
+- Docker + Docker Compose (for Docker-hosted modes)
+- A modern browser (Chrome, Safari, Edge, Firefox)
+- A free [Tailscale](https://tailscale.com) account if you use the private Tailscale mode
 
 ## Setup
 
@@ -55,25 +55,57 @@ docker compose up -d
 
 **6. Open the app**
 
-On any device connected to your Tailscale network, navigate to:
+- With the current `docker-compose.yml` (DEV mode), open:
 ```
-http://tfc-planner:8080
+http://localhost:8082
 ```
+- In Tailscale mode, use your Tailnet hostname/IP for the app service.
 
 On Android, open Chrome → three-dot menu → **Add to Home screen** to install it as a shortcut that feels like a native app.
 
-## Usage
+## Usage (Current UI)
 
-1. **Before the meeting** — if you have a new report from ScoutBook, tap **Upload New Report** and select the CSV from your downloads
-2. **At the meeting** — tap **Start Meeting**, then tap each scout's name as they arrive (green = present)
-3. **Get recommendations** — tap **See Recommendations** to see requirements ranked by the number of present scouts who still need them; tap any requirement to expand the list of which scouts need it
-4. **Save the record** — tap **Save Attendance Record** before closing
+1. **Load report data**
+	- Docker app (`index.html`): tap **Upload new report CSV** and pick a ScoutBook CSV.
+	- Portable app (`portable.html`): load one or more ScoutBook CSV files at session start.
+2. **Choose a rank view**
+	- Use the rank pills (Scout, Tenderfoot, Second Class, First Class, etc.) to switch reports.
+3. **Mark attendance**
+	- Tap scout chips to toggle present/absent status.
+4. **Plan the meeting**
+	- Review requirements sorted by highest need among present scouts.
+	- Tap a requirement card to expand the scout list for that requirement.
+
+## Hosting Options
+
+### 1) Private VPN hosting with Tailscale (recommended for private shared access)
+
+- Run the Docker stack.
+- Keep `tfc-app` behind Tailscale.
+- Access from devices on your Tailnet.
+- Best when you want multi-user access and private network boundaries.
+
+### 2) Local self-contained Wi-Fi hosting (for example Raspberry Pi)
+
+- Run the app on a local device (such as a Pi) and expose it on local Wi-Fi only.
+- Users connect to your local network and open the app in their browser.
+- Best for in-person meetings without internet dependence.
+
+### 3) Static hosting on GitHub Pages (portable mode)
+
+- Publish the repository with `index.html` at root redirecting to `app/static/portable.html`.
+- App logic runs entirely in each user's browser; there is no backend service.
+- Users must load CSV files locally each session.
+- Best for zero-server deployment and broad device compatibility.
+
+> Important: GitHub Pages is public by default. Do not commit real scout CSV data to the repository.
 
 ## Data & Privacy
 
-- **No data leaves your machine.** The app is only reachable through your Tailscale private network.
-- Scout CSVs and the attendance database are listed in `.gitignore` and will never be committed to this repo.
-- The `.env` file (Tailscale auth key) is also excluded from git.
+- In portable mode, CSV processing happens locally in the browser.
+- In Tailscale or local Wi-Fi Docker modes, CSVs are stored on the host under `data/`.
+- Scout CSVs are listed in `.gitignore` and should never be committed to this repo.
+- The `.env` file (Tailscale auth key) is excluded from git.
 
 ## Project Structure
 
@@ -83,9 +115,11 @@ tfc/
 │   ├── main.py            # FastAPI backend
 │   ├── requirements.txt
 │   └── static/
-│       └── index.html     # Full single-page frontend
+│       ├── index.html     # Backend-assisted frontend
+│       └── portable.html  # Fully standalone client-only app
 ├── data/                  # Mounted as a Docker volume
 │   └── .gitkeep           # Keeps the directory tracked in git
+├── index.html             # Root landing page redirect (GitHub Pages)
 ├── .env.example           # Template for the Tailscale auth key
 ├── .gitignore
 ├── Dockerfile
@@ -94,7 +128,10 @@ tfc/
 
 ## Updating the Report
 
-When ScoutBook publishes updated advancement data, download the new CSV and use the **Upload New Report** button. The app always uses whichever CSV in `data/` has the most recent modification time, so old files can be left in place or deleted.
+When ScoutBook publishes updated advancement data:
+
+- Docker app (`index.html`): use **Upload new report CSV**. The backend uses the newest matching file.
+- Portable app (`portable.html`): reload one or more CSV files at session start; latest file per rank is selected from what you loaded.
 
 ## Tailscale Notes
 
