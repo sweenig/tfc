@@ -16,9 +16,15 @@ services:
     build:
       context: ./app
       dockerfile: ../Dockerfile
-    network_mode: "service:tailscale"
-    depends_on:
-      - tailscale
+    # LIVE mode (default): app is only reachable through Tailscale.
+    # network_mode: "service:tailscale"
+    # depends_on:
+    #   - tailscale
+    # DEV mode (localhost):
+    # 1) Comment out the `network_mode` and `depends_on` lines above.
+    # 2) Uncomment the `ports` block below.
+    ports:
+      - "8082:8080"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
