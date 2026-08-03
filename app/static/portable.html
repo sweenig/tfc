@@ -274,6 +274,26 @@
       padding: 16px;
     }
 
+    .modal-card-small {
+      width: min(520px, 100%);
+    }
+
+    .validation-body {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    .validation-list {
+      margin-top: 8px;
+      padding-left: 20px;
+    }
+
+    .validation-list li {
+      margin-bottom: 6px;
+    }
+
     .report-textbox {
       width: 100%;
       min-height: 260px;
@@ -390,6 +410,16 @@
       <button id="dialogCloseBtn" class="secondary-btn" type="button">Close</button>
     </div>
     <div id="dialogCopyStatus" class="copy-help hidden">Copied!</div>
+  </div>
+</div>
+
+<div id="validationDialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="validationDialogTitle">
+  <div class="modal-card modal-card-small">
+    <div class="card-title" id="validationDialogTitle">Before You Generate Report</div>
+    <div id="validationBody" class="validation-body"></div>
+    <div class="modal-actions">
+      <button id="validationCloseBtn" class="secondary-btn" type="button">Got It</button>
+    </div>
   </div>
 </div>
 
@@ -696,6 +726,12 @@ async function copyEndOfNightReport() {
 
 function openEndOfNightDialog() {
   if (!reportData) return;
+  const issues = getEndOfNightIssues();
+  if (issues.length) {
+    openValidationDialog(issues);
+    return;
+  }
+
   const dialog = document.getElementById("reportDialog");
   const textBox = document.getElementById("reportTextBox");
   const status = document.getElementById("dialogCopyStatus");
@@ -710,6 +746,36 @@ function openEndOfNightDialog() {
   dialog.classList.remove("hidden");
   textBox.focus();
   textBox.select();
+}
+
+function getEndOfNightIssues() {
+  const issues = [];
+
+  if (!presentScouts.size) {
+    issues.push("No scouts are marked present. In Present Tonight, tap at least one scout so their chip turns green.");
+  }
+
+  if (!getSelectedRequirementsForCurrentRank().size) {
+    issues.push("No requirements are marked as worked on. Check at least one requirement box in the requirements list.");
+  }
+
+  return issues;
+}
+
+function openValidationDialog(issues) {
+  const dialog = document.getElementById("validationDialog");
+  const body = document.getElementById("validationBody");
+  if (!dialog || !body) return;
+
+  const items = issues.map(issue => `<li>${escHtml(issue)}</li>`).join("");
+  body.innerHTML = `<div>Please complete the following before generating tonight's report:</div><ul class="validation-list">${items}</ul>`;
+  dialog.classList.remove("hidden");
+}
+
+function closeValidationDialog() {
+  const dialog = document.getElementById("validationDialog");
+  if (!dialog) return;
+  dialog.classList.add("hidden");
 }
 
 function closeEndOfNightDialog() {
@@ -828,9 +894,16 @@ document.getElementById("reportDialog").addEventListener("click", e => {
     closeEndOfNightDialog();
   }
 });
+document.getElementById("validationCloseBtn").addEventListener("click", closeValidationDialog);
+document.getElementById("validationDialog").addEventListener("click", e => {
+  if (e.target.id === "validationDialog") {
+    closeValidationDialog();
+  }
+});
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     closeEndOfNightDialog();
+    closeValidationDialog();
   }
 });
 </script>
