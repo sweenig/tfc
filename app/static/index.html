@@ -192,6 +192,126 @@
       font-size: .8rem;
     }
 
+    .req-worked-toggle {
+      min-width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color .15s, background .15s;
+    }
+    .req-worked-toggle:hover { border-color: var(--navy); background: #f8faff; }
+
+    .req-worked-checkbox {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--navy);
+      cursor: pointer;
+    }
+
+    .report-actions { margin-top: 14px; }
+
+    .copy-report-btn {
+      border: none;
+      border-radius: 10px;
+      background: var(--navy);
+      color: #fff;
+      font-weight: 700;
+      font-size: .86rem;
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .copy-report-btn:hover { background: var(--navy-light); }
+
+    .copy-help {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      z-index: 250;
+    }
+
+    .modal-card {
+      width: min(760px, 100%);
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
+      padding: 16px;
+    }
+
+    .modal-card-small {
+      width: min(520px, 100%);
+    }
+
+    .validation-body {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    .validation-list {
+      margin-top: 8px;
+      padding-left: 20px;
+    }
+
+    .validation-list li {
+      margin-bottom: 6px;
+    }
+
+    .report-textbox {
+      width: 100%;
+      min-height: 260px;
+      max-height: 60dvh;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: .85rem;
+      line-height: 1.35;
+      color: var(--text);
+      background: #fbfdff;
+      margin-top: 8px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .secondary-btn {
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+      font-weight: 700;
+      font-size: .86rem;
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .secondary-btn:hover { border-color: var(--navy); }
+
+    .hidden { display: none; }
+
     /* ── Upload ──────────────────────────────────────────────────────── */
     .upload-toggle {
       display: block;
@@ -272,18 +392,45 @@
       <div class="section-label">Requirements — ranked by need</div>
       <div id="reqList" class="req-list"></div>
 
+      <div class="report-actions">
+        <button id="copyReportBtn" class="copy-report-btn" type="button">End of Night Report</button>
+        <div class="copy-help">Use the checkboxes on each requirement row to mark what was worked on tonight.</div>
+      </div>
+
       <!-- Upload -->
       <button class="upload-toggle" onclick="toggleUpload()">⬆ Upload new report CSV</button>
       <div class="upload-zone" id="uploadZone">
         <div class="icon">📄</div>
-        <div class="label">Tap to choose CSV</div>
-        <div class="hint">Download from ScoutBook, then select it here</div>
+        <div class="label">Tap to choose CSV files</div>
+        <div class="hint">Download from ScoutBook, then select one or more files</div>
       </div>
-      <input type="file" id="fileInput" accept=".csv">
+      <input type="file" id="fileInput" accept=".csv" multiple>
 
     </div>
   </div>
 
+</div>
+
+<div id="reportDialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reportDialogTitle">
+  <div class="modal-card">
+    <div class="card-title" id="reportDialogTitle">End of Night Report</div>
+    <textarea id="reportTextBox" class="report-textbox" readonly></textarea>
+    <div class="modal-actions">
+      <button id="dialogCopyBtn" class="copy-report-btn" type="button">Copy to Clipboard</button>
+      <button id="dialogCloseBtn" class="secondary-btn" type="button">Close</button>
+    </div>
+    <div id="dialogCopyStatus" class="copy-help hidden">Copied!</div>
+  </div>
+</div>
+
+<div id="validationDialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="validationDialogTitle">
+  <div class="modal-card modal-card-small">
+    <div class="card-title" id="validationDialogTitle">Before You Generate Report</div>
+    <div id="validationBody" class="validation-body"></div>
+    <div class="modal-actions">
+      <button id="validationCloseBtn" class="secondary-btn" type="button">Got It</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════════ SCRIPT ═══════════════════════ -->
@@ -294,6 +441,7 @@ let reportData     = null;
 let presentScouts  = new Set();
 let availableRanks = [];
 let currentRank    = null;
+const selectedRequirementsByRank = new Map();
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -321,7 +469,7 @@ async function loadReport() {
   const res = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
   if (!res.ok) throw new Error((await res.json()).detail);
   reportData = await res.json();
-  presentScouts = new Set(reportData.scouts);
+  presentScouts = new Set();
 }
 
 function renderRankSelector() {
@@ -343,6 +491,7 @@ async function selectRank(rank) {
 // ── Render ────────────────────────────────────────────────────────────────────
 
 function render() {
+  const selected = getSelectedRequirementsForCurrentRank();
   const present = Array.from(presentScouts);
 
   // Score each requirement by how many present scouts still need it
@@ -373,12 +522,19 @@ function render() {
 
   list.innerHTML = scored.map(r => {
     const pct    = r.count / r.total;
-    const bubble = pct >= 0.6 ? "bubble-high" : pct >= 0.35 ? "bubble-med" : "bubble-low";
     const tags   = r.scouts.map(s => `<span class="tag">${escHtml(s)}</span>`).join("");
     return `
       <div class="req-item" onclick="toggleReq(this)">
         <div class="req-header">
-          <div class="req-bubble ${bubble}">${r.count}</div>
+          <label class="req-worked-toggle" title="Mark worked on tonight">
+            <input
+              type="checkbox"
+              class="req-worked-checkbox"
+              data-req-name="${escHtml(r.name)}"
+              ${selected.has(r.name) ? "checked" : ""}
+              onclick="event.stopPropagation()"
+            >
+          </label>
           <div class="req-info">
             <div class="req-name">${escHtml(r.name)}</div>
             <div class="req-sub">${r.count} of ${r.total} present scouts still need this</div>
@@ -388,6 +544,154 @@ function render() {
         <div class="req-scouts"><strong>Needs:</strong> ${tags}</div>
       </div>`;
   }).join("");
+
+  document.querySelectorAll(".req-worked-checkbox[data-req-name]").forEach(input => {
+    input.addEventListener("change", () => {
+      const reqName = input.dataset.reqName;
+      if (!reqName) return;
+      if (input.checked) selected.add(reqName);
+      else selected.delete(reqName);
+    });
+  });
+}
+
+function getSelectedRequirementsForCurrentRank() {
+  let selected = selectedRequirementsByRank.get(currentRank);
+  if (!selected) {
+    selected = new Set();
+    selectedRequirementsByRank.set(currentRank, selected);
+  }
+  return selected;
+}
+
+function buildEndOfNightReport() {
+  const selected = Array.from(getSelectedRequirementsForCurrentRank());
+  const present = reportData.scouts.filter(s => presentScouts.has(s));
+  const date = new Date().toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+
+  const scoutLines = present.length ? present.map(name => `- ${name}`) : ["- None"];
+  const reqLines = selected.length ? selected.map(req => `- ${req}`) : ["- None selected"];
+
+  return [
+    "--- TFC Progress Report ---",
+    `Date: ${date}`,
+    `Rank: ${currentRank}`,
+    "",
+    "Scouts Present:",
+    ...scoutLines,
+    "",
+    "Requirements Worked On:",
+    ...reqLines,
+    "---------------------------"
+  ].join("\n");
+}
+
+async function writeToClipboard(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-9999px";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(ta);
+
+  if (!copied) {
+    throw new Error("Clipboard copy is not supported in this browser context.");
+  }
+}
+
+async function copyEndOfNightReport() {
+  const textBox = document.getElementById("reportTextBox");
+  const status = document.getElementById("dialogCopyStatus");
+  if (!textBox) return;
+
+  try {
+    await writeToClipboard(textBox.value);
+    if (status) {
+      status.textContent = "Copied!";
+      status.classList.remove("hidden");
+    }
+  } catch (err) {
+    showAlert(
+      "mainAlert",
+      "err",
+      `Unable to copy report to clipboard. ${escHtml(err?.message || "Clipboard unavailable.")}`
+    );
+  }
+}
+
+function openEndOfNightDialog() {
+  if (!reportData) return;
+  const issues = getEndOfNightIssues();
+  if (issues.length) {
+    openValidationDialog(issues);
+    return;
+  }
+
+  const dialog = document.getElementById("reportDialog");
+  const textBox = document.getElementById("reportTextBox");
+  const status = document.getElementById("dialogCopyStatus");
+  if (!dialog || !textBox) return;
+
+  textBox.value = buildEndOfNightReport();
+  if (status) {
+    status.classList.add("hidden");
+    status.textContent = "Copied!";
+  }
+
+  dialog.classList.remove("hidden");
+  textBox.focus();
+  textBox.select();
+}
+
+function getEndOfNightIssues() {
+  const issues = [];
+
+  if (!presentScouts.size) {
+    issues.push("No scouts are marked present. In Present Tonight, tap at least one scout so their chip turns green.");
+  }
+
+  if (!getSelectedRequirementsForCurrentRank().size) {
+    issues.push("No requirements are marked as worked on. Check at least one requirement box in the requirements list.");
+  }
+
+  return issues;
+}
+
+function openValidationDialog(issues) {
+  const dialog = document.getElementById("validationDialog");
+  const body = document.getElementById("validationBody");
+  if (!dialog || !body) return;
+
+  const items = issues.map(issue => `<li>${escHtml(issue)}</li>`).join("");
+  body.innerHTML = `<div>Please complete the following before generating tonight's report:</div><ul class="validation-list">${items}</ul>`;
+  dialog.classList.remove("hidden");
+}
+
+function closeValidationDialog() {
+  const dialog = document.getElementById("validationDialog");
+  if (!dialog) return;
+  dialog.classList.add("hidden");
+}
+
+function closeEndOfNightDialog() {
+  const dialog = document.getElementById("reportDialog");
+  if (!dialog) return;
+  dialog.classList.add("hidden");
 }
 
 function toggleScout(name) {
@@ -414,24 +718,29 @@ function wireUpload() {
   const input = document.getElementById("fileInput");
 
   zone.addEventListener("click",     () => input.click());
-  input.addEventListener("change",   e  => handleFile(e.target.files[0]));
+  input.addEventListener("change",   e  => handleFiles(e.target.files));
   zone.addEventListener("dragover",  e  => { e.preventDefault(); zone.classList.add("over"); });
   zone.addEventListener("dragleave", ()  => zone.classList.remove("over"));
   zone.addEventListener("drop", e => {
     e.preventDefault();
     zone.classList.remove("over");
-    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
   });
 }
 
-async function handleFile(file) {
-  if (!file?.name.toLowerCase().endsWith(".csv")) {
-    showAlert("mainAlert", "err", "Please select a .csv file.");
+async function handleFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+
+  if (!files.every(file => file?.name.toLowerCase().endsWith(".csv"))) {
+    showAlert("mainAlert", "err", "Please select only .csv files.");
     return;
   }
+
   showAlert("mainAlert", "inf", "Uploading…");
   const form = new FormData();
-  form.append("file", file);
+  files.forEach(file => form.append("files", file));
+
   try {
     const res  = await fetch("/api/upload", { method: "POST", body: form });
     const data = await res.json();
@@ -442,12 +751,14 @@ async function handleFile(file) {
 
     const rRes = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
     reportData    = await rRes.json();
-    presentScouts = new Set(reportData.scouts);
+    presentScouts = new Set();
     const ranksRes = await fetch("/api/ranks");
     availableRanks = await ranksRes.json();
     renderRankSelector();
     render();
-    showAlert("mainAlert", "ok", `✓ Uploaded <strong>${escHtml(file.name)}</strong> — ${data.scouts} scouts loaded.`);
+
+    const count = Number.isFinite(data.files?.length) ? data.files.length : files.length;
+    showAlert("mainAlert", "ok", `✓ Uploaded <strong>${count}</strong> file(s) — ${data.scouts} scouts loaded.`);
   } catch (e) {
     showAlert("mainAlert", "err", `✗ ${escHtml(e.message)}`);
   }
@@ -470,6 +781,27 @@ function escHtml(s) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
+document.getElementById("copyReportBtn").addEventListener("click", openEndOfNightDialog);
+document.getElementById("dialogCopyBtn").addEventListener("click", copyEndOfNightReport);
+document.getElementById("dialogCloseBtn").addEventListener("click", closeEndOfNightDialog);
+document.getElementById("reportDialog").addEventListener("click", e => {
+  if (e.target.id === "reportDialog") {
+    closeEndOfNightDialog();
+  }
+});
+document.getElementById("validationCloseBtn").addEventListener("click", closeValidationDialog);
+document.getElementById("validationDialog").addEventListener("click", e => {
+  if (e.target.id === "validationDialog") {
+    closeValidationDialog();
+  }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    closeEndOfNightDialog();
+    closeValidationDialog();
+  }
+});
+
 init();
 </script>
 </body>

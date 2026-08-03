@@ -132,32 +132,52 @@ async def get_report(rank: str | None = None):
 
 
 @app.post("/api/upload")
-async def upload_report(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+async def upload_report(files: list[UploadFile] = File(...)):
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one .csv file is required")
 
-    # Read with size cap
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(16_384):
-        total += len(chunk)
-        if total > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="File exceeds 2 MB limit")
-        chunks.append(chunk)
-    content = b"".join(chunks)
-
-    dest = DATA_DIR / safe_filename(file.filename)
-    dest.write_bytes(content)
+    saved_paths: list[Path] = []
+    uploaded_names: list[str] = []
+    total_scouts = 0
 
     try:
-        data = parse_csv(dest)
-        if not data["scouts"]:
-            raise ValueError("No scouts detected")
-    except Exception as exc:
-        dest.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f"Invalid file: {exc}")
+        for file in files:
+            if not file.filename or not file.filename.lower().endswith(".csv"):
+                raise HTTPException(status_code=400, detail="Only .csv files are accepted")
 
-    return {"message": f"Uploaded {dest.name}", "scouts": len(data["scouts"])}
+            # Read with per-file size cap
+            chunks: list[bytes] = []
+            total = 0
+            while chunk := await file.read(16_384):
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail=f"{file.filename} exceeds 2 MB limit")
+                chunks.append(chunk)
+            content = b"".join(chunks)
+
+            dest = DATA_DIR / safe_filename(file.filename)
+            dest.write_bytes(content)
+            saved_paths.append(dest)
+
+            try:
+                data = parse_csv(dest)
+                if not data["scouts"]:
+                    raise ValueError("No scouts detected")
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Invalid file {dest.name}: {exc}")
+
+            uploaded_names.append(dest.name)
+            total_scouts += len(data["scouts"])
+
+        return {
+            "message": f"Uploaded {len(uploaded_names)} file(s)",
+            "files": uploaded_names,
+            "scouts": total_scouts,
+        }
+    except HTTPException:
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        raise
 
 
 # ── Static files (served last so API routes take priority) ───────────────────
