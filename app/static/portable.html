@@ -195,11 +195,20 @@
 
     .req-scouts .tag {
       display: inline-block;
-      background: var(--bg);
       border-radius: 100px;
       padding: 3px 10px;
       margin: 3px 3px 3px 0;
       font-size: 0.8rem;
+    }
+    .req-scouts .tag.needs {
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #a5d6a7;
+    }
+    .req-scouts .tag.done {
+      background: #fff0f0;
+      color: var(--red);
+      border: 1px solid #ffcdd2;
     }
 
     .req-worked-toggle {
@@ -614,7 +623,9 @@ function render() {
     list.innerHTML = scored.map(r => {
       const pct = r.total ? r.count / r.total : 0;
       const bubble = pct >= 0.6 ? "bubble-high" : pct >= 0.35 ? "bubble-med" : "bubble-low";
-      const tags = r.scouts.map(s => `<span class="tag">${escHtml(s)}</span>`).join("");
+      const needsSet = new Set(r.scouts);
+      const needsTags = r.scouts.map(s => `<span class="tag needs">${escHtml(s)}</span>`).join("");
+      const doneTags  = present.filter(s => !needsSet.has(s)).map(s => `<span class="tag done">${escHtml(s)}</span>`).join("");
 
       return `
         <div class="req-item" onclick="toggleReq(this)">
@@ -634,7 +645,7 @@ function render() {
             </div>
             <span class="req-chevron">&gt;</span>
           </div>
-          <div class="req-scouts"><strong>Needs:</strong> ${tags}</div>
+          <div class="req-scouts">${needsTags}${doneTags ? ` ${doneTags}` : ""}</div>
         </div>`;
     }).join("");
   }
