@@ -226,6 +226,7 @@
     .report-actions { margin-top: 14px; }
 
     .copy-report-btn {
+      margin-top: 12px;
       border: none;
       border-radius: 10px;
       background: var(--navy);
@@ -322,24 +323,6 @@
     .hidden { display: none; }
 
     /* ── Upload ──────────────────────────────────────────────────────── */
-    .upload-toggle {
-      display: block;
-      width: 100%;
-      background: none;
-      border: 1.5px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: .85rem;
-      color: var(--muted);
-      cursor: pointer;
-      text-align: left;
-      margin-top: 20px;
-      margin-bottom: 8px;
-      font-weight: 600;
-      transition: border-color .2s, color .2s;
-    }
-    .upload-toggle:hover { border-color: var(--navy); color: var(--navy); }
-
     .upload-zone {
       border: 2px dashed var(--border);
       border-radius: 10px;
@@ -347,15 +330,13 @@
       text-align: center;
       cursor: pointer;
       transition: border-color .2s, background .2s;
-      display: none;
       margin-bottom: 20px;
+      background: #fff;
     }
-    .upload-zone.visible { display: block; }
     .upload-zone:hover, .upload-zone.over {
       border-color: var(--navy);
       background: #f0f4ff;
     }
-    .upload-zone .icon { font-size: 2rem; margin-bottom: 6px; }
     .upload-zone .label { font-weight: 600; }
     .upload-zone .hint { font-size: .82rem; color: var(--muted); margin-top: 4px; }
     .download-reports-link {
@@ -377,6 +358,11 @@
       margin: 0 auto 10px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 640px) {
+      .content { padding: 12px; }
+      .req-scouts { padding-left: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -387,41 +373,36 @@
 </header>
 
 <!-- ═══════════════════════ CONTENT ═══════════════════════ -->
-<div id="mainContent">
+<div class="content">
+
+  <div id="mainAlert"></div>
+
+  <div class="card">
+    <div class="card-title">Session Start</div>
+    <a class="download-reports-link" href="https://advancements.scouting.org/reports#custom" target="_blank" rel="noopener noreferrer">Click here to download reports from Scouting.org</a>
+    <div class="upload-zone" id="uploadZone">
+      <div class="label">Choose one or more ScoutBook CSV files</div>
+      <div class="hint">You can upload multiple rank files at once.</div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" multiple>
+  </div>
 
   <div id="loadingState" class="loading"><div class="spinner"></div>Loading report…</div>
 
-  <div id="appBody" style="display:none">
+  <div id="appBody" class="hidden">
+    <div class="rank-selector" id="rankSelector"></div>
 
-    <div class="content">
+    <div class="card">
+      <div class="card-title">Present Tonight</div>
+      <div class="present-chips" id="presentChips"></div>
+    </div>
 
-      <div id="mainAlert"></div>
+    <div class="section-label">Requirements — ranked by need</div>
+    <div id="reqList" class="req-list"></div>
 
-      <div class="rank-selector" id="rankSelector"></div>
-
-      <div class="card">
-        <div class="card-title">Present Tonight</div>
-        <div class="present-chips" id="presentChips"></div>
-      </div>
-
-      <div class="section-label">Requirements — ranked by need</div>
-      <div id="reqList" class="req-list"></div>
-
-      <div class="report-actions">
-        <button id="copyReportBtn" class="copy-report-btn" type="button">End of Night Report</button>
-        <div class="copy-help">Use the checkboxes on each requirement row to mark what was worked on tonight.</div>
-      </div>
-
-      <!-- Upload -->
-      <button class="upload-toggle" onclick="toggleUpload()">⬆ Upload new report CSV</button>
-      <a class="download-reports-link" href="https://advancements.scouting.org/reports#custom" target="_blank" rel="noopener noreferrer">Click here to download reports from Scouting.org</a>
-      <div class="upload-zone" id="uploadZone">
-        <div class="icon">📄</div>
-        <div class="label">Tap to choose CSV files</div>
-        <div class="hint">Download from ScoutBook, then select one or more files</div>
-      </div>
-      <input type="file" id="fileInput" accept=".csv" multiple>
-
+    <div class="report-actions">
+      <button id="copyReportBtn" class="copy-report-btn" type="button">End of Night Report</button>
+      <div class="copy-help">Use the checkboxes on each requirement row to mark what was worked on tonight.</div>
     </div>
   </div>
 
@@ -465,19 +446,20 @@ async function init() {
   try {
     const res = await fetch("/api/ranks");
     availableRanks = await res.json();
-    if (!availableRanks.length) throw new Error("No report files found. Upload a CSV to get started.");
 
-    currentRank = availableRanks[0].rank;
-    await loadReport();
-
-    document.getElementById("loadingState").style.display = "none";
-    document.getElementById("appBody").style.display      = "block";
-    renderRankSelector();
-    render();
+    if (availableRanks.length) {
+      currentRank = availableRanks[0].rank;
+      await loadReport();
+      document.getElementById("appBody").classList.remove("hidden");
+      renderRankSelector();
+      render();
+    } else {
+      showAlert("mainAlert", "inf", "No CSV files found on server. Upload one to get started.");
+    }
   } catch (e) {
-    document.getElementById("loadingState").innerHTML =
-      `<div style="color:var(--red);font-size:.9rem;padding:32px">⚠ ${escHtml(e.message)}</div>`;
+    showAlert("mainAlert", "err", `⚠ ${escHtml(e.message)}`);
   }
+  document.getElementById("loadingState").classList.add("hidden");
   wireUpload();
 }
 
@@ -727,10 +709,6 @@ function toggleReq(item) {
 
 // ── Upload ────────────────────────────────────────────────────────────────────
 
-function toggleUpload() {
-  document.getElementById("uploadZone").classList.toggle("visible");
-}
-
 function wireUpload() {
   const zone  = document.getElementById("uploadZone");
   const input = document.getElementById("fileInput");
@@ -765,13 +743,13 @@ async function handleFiles(fileList) {
     if (!res.ok) throw new Error(data.detail || "Upload failed");
 
     document.getElementById("fileInput").value = "";
-    document.getElementById("uploadZone").classList.remove("visible");
 
     const rRes = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
     reportData    = await rRes.json();
     presentScouts = new Set();
     const ranksRes = await fetch("/api/ranks");
     availableRanks = await ranksRes.json();
+    document.getElementById("appBody").classList.remove("hidden");
     renderRankSelector();
     render();
 

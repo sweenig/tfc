@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Troop Planner">
   <title>Scout Meeting Planner - Portable</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -618,37 +621,38 @@ function render() {
 
   const list = document.getElementById("reqList");
   if (!scored.length) {
-    list.innerHTML = `<div class="card" style="text-align:center;color:var(--green);font-weight:700;padding:24px">All present scouts have completed all listed requirements.</div>`;
-  } else {
-    list.innerHTML = scored.map(r => {
-      const pct = r.total ? r.count / r.total : 0;
-      const bubble = pct >= 0.6 ? "bubble-high" : pct >= 0.35 ? "bubble-med" : "bubble-low";
-      const needsSet = new Set(r.scouts);
-      const needsTags = r.scouts.map(s => `<span class="tag needs">${escHtml(s)}</span>`).join("");
-      const doneTags  = present.filter(s => !needsSet.has(s)).map(s => `<span class="tag done">${escHtml(s)}</span>`).join("");
-
-      return `
-        <div class="req-item" onclick="toggleReq(this)">
-          <div class="req-header">
-            <label class="req-worked-toggle" title="Mark worked on tonight">
-              <input
-                type="checkbox"
-                class="req-worked-checkbox"
-                data-req-name="${escHtml(r.name)}"
-                ${selected.has(r.name) ? "checked" : ""}
-                onclick="event.stopPropagation()"
-              >
-            </label>
-            <div class="req-info">
-              <div class="req-name">${escHtml(r.name)}</div>
-              <div class="req-sub">${r.count} of ${r.total} present scouts still need this</div>
-            </div>
-            <span class="req-chevron">&gt;</span>
-          </div>
-          <div class="req-scouts">${needsTags}${doneTags ? ` ${doneTags}` : ""}</div>
-        </div>`;
-    }).join("");
+    list.innerHTML = `<div class="card" style="text-align:center;color:var(--green);font-weight:700;padding:24px">
+      🎉 Everyone present has completed all requirements!
+    </div>`;
+    return;
   }
+
+  list.innerHTML = scored.map(r => {
+    const pct = r.total ? r.count / r.total : 0;
+    const needsSet = new Set(r.scouts);
+    const needsTags = r.scouts.map(s => `<span class="tag needs">${escHtml(s)}</span>`).join("");
+    const doneTags  = present.filter(s => !needsSet.has(s)).map(s => `<span class="tag done">${escHtml(s)}</span>`).join("");
+    return `
+      <div class="req-item" onclick="toggleReq(this)">
+        <div class="req-header">
+          <label class="req-worked-toggle" title="Mark worked on tonight">
+            <input
+              type="checkbox"
+              class="req-worked-checkbox"
+              data-req-name="${escHtml(r.name)}"
+              ${selected.has(r.name) ? "checked" : ""}
+              onclick="event.stopPropagation()"
+            >
+          </label>
+          <div class="req-info">
+            <div class="req-name">${escHtml(r.name)}</div>
+            <div class="req-sub">${r.count} of ${r.total} present scouts still need this</div>
+          </div>
+          <span class="req-chevron">›</span>
+        </div>
+        <div class="req-scouts">${needsTags}${doneTags ? ` ${doneTags}` : ""}</div>
+      </div>`;
+  }).join("");
 
   document.querySelectorAll(".req-worked-checkbox[data-req-name]").forEach(input => {
     input.addEventListener("change", () => {
