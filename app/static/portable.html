@@ -129,6 +129,7 @@
 
     .chip:hover { opacity: 0.8; }
     .chip.absent { background: #fff0f0; color: var(--red); }
+    .chip.occupied { background: #e5e7eb; color: #9ca3af; }
 
     .section-label {
       font-size: 0.8rem;
@@ -447,10 +448,15 @@
 
 const rankReports = new Map();
 let reportData = null;
-let presentScouts = new Set();
 let availableRanks = [];
 let currentRank = null;
+const presentByRank              = new Map();
 const selectedRequirementsByRank = new Map();
+
+function getPresentForRank(rank) {
+  if (!presentByRank.has(rank)) presentByRank.set(rank, new Set());
+  return presentByRank.get(rank);
+}
 
 const RANK_RE = /^ReportBuilder_[^_]+_(.+)_(\d{8})\.csv$/i;
 
@@ -591,7 +597,6 @@ function selectRank(rank) {
     showAlert("mainAlert", "err", `No report loaded for rank ${escHtml(rank)}.`);
     return;
   }
-  presentScouts = new Set();
   renderRankSelector();
   render();
 }
@@ -600,8 +605,13 @@ function render() {
   if (!reportData) return;
 
   const selected = getSelectedRequirementsForCurrentRank();
+  const mine = getPresentForRank(currentRank);
+  const present = Array.from(mine);
 
-  const present = Array.from(presentScouts);
+  const occupiedElsewhere = new Set();
+  for (const [rank, scouts] of presentByRank) {
+    if (rank !== currentRank) scouts.forEach(s => occupiedElsewhere.add(s));
+  }
 
   const scored = reportData.requirements
     .map(req => {
@@ -612,7 +622,10 @@ function render() {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   document.getElementById("presentChips").innerHTML = reportData.scouts
-    .map(s => `<span class="chip${presentScouts.has(s) ? "" : " absent"}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`)
+    .map(s => {
+      const cls = mine.has(s) ? "" : occupiedElsewhere.has(s) ? " occupied" : " absent";
+      return `<span class="chip${cls}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`;
+    })
     .join("");
 
   document.querySelectorAll("#presentChips .chip").forEach(chip => {
@@ -678,7 +691,7 @@ function getSelectedRequirementsForCurrentRank() {
 
 function buildEndOfNightReport() {
   const selected = Array.from(getSelectedRequirementsForCurrentRank());
-  const present = reportData.scouts.filter(s => presentScouts.has(s));
+  const present = reportData.scouts.filter(s => getPresentForRank(currentRank).has(s));
   const date = new Date().toLocaleDateString(undefined, {
     year: "numeric",
     month: "long",
@@ -773,7 +786,7 @@ function openEndOfNightDialog() {
 function getEndOfNightIssues() {
   const issues = [];
 
-  if (!presentScouts.size) {
+  if (!getPresentForRank(currentRank).size) {
     issues.push("No scouts are marked present. In Present Tonight, tap at least one scout so their chip turns green.");
   }
 
@@ -807,10 +820,15 @@ function closeEndOfNightDialog() {
 }
 
 function toggleScout(name) {
-  if (presentScouts.has(name)) {
-    presentScouts.delete(name);
+  const mine = getPresentForRank(currentRank);
+  if (mine.has(name)) {
+    mine.delete(name);
   } else {
-    presentScouts.add(name);
+    // Reassign from any other rank they may already be working with
+    for (const [rank, scouts] of presentByRank) {
+      if (rank !== currentRank) scouts.delete(name);
+    }
+    mine.add(name);
   }
   render();
 }
@@ -865,7 +883,7 @@ async function loadFiles(files) {
 
     currentRank = availableRanks[0].rank;
     reportData = rankReports.get(currentRank).report;
-    presentScouts = new Set();
+    presentByRank.clear();
 
     document.getElementById("idleHelp").classList.add("hidden");
     document.getElementById("appBody").classList.remove("hidden");

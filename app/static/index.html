@@ -125,6 +125,10 @@
       background: #fff0f0;
       color: var(--red);
     }
+    .chip.occupied {
+      background: #e5e7eb;
+      color: #9ca3af;
+    }
 
     /* ── Requirements ────────────────────────────────────────────────── */
     .section-label {
@@ -435,10 +439,15 @@
 "use strict";
 
 let reportData     = null;
-let presentScouts  = new Set();
 let availableRanks = [];
 let currentRank    = null;
+const presentByRank            = new Map();
 const selectedRequirementsByRank = new Map();
+
+function getPresentForRank(rank) {
+  if (!presentByRank.has(rank)) presentByRank.set(rank, new Set());
+  return presentByRank.get(rank);
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -467,7 +476,6 @@ async function loadReport() {
   const res = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
   if (!res.ok) throw new Error((await res.json()).detail);
   reportData = await res.json();
-  presentScouts = new Set();
 }
 
 function renderRankSelector() {
@@ -490,7 +498,13 @@ async function selectRank(rank) {
 
 function render() {
   const selected = getSelectedRequirementsForCurrentRank();
-  const present = Array.from(presentScouts);
+  const mine = getPresentForRank(currentRank);
+  const present = Array.from(mine);
+
+  const occupiedElsewhere = new Set();
+  for (const [rank, scouts] of presentByRank) {
+    if (rank !== currentRank) scouts.forEach(s => occupiedElsewhere.add(s));
+  }
 
   // Score each requirement by how many present scouts still need it
   const scored = reportData.requirements
@@ -501,9 +515,12 @@ function render() {
     .filter(r => r.count > 0)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
-  // All scouts as toggleable chips — green = present, red = absent
+  // All scouts as toggleable chips — green = working here, gray = occupied elsewhere, red = available
   document.getElementById("presentChips").innerHTML = reportData.scouts
-    .map(s => `<span class="chip${presentScouts.has(s) ? '' : ' absent'}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`)
+    .map(s => {
+      const cls = mine.has(s) ? '' : occupiedElsewhere.has(s) ? ' occupied' : ' absent';
+      return `<span class="chip${cls}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`;
+    })
     .join("");
   document.querySelectorAll("#presentChips .chip").forEach(chip =>
     chip.addEventListener("click", () => toggleScout(chip.dataset.scout))
@@ -566,7 +583,7 @@ function getSelectedRequirementsForCurrentRank() {
 
 function buildEndOfNightReport() {
   const selected = Array.from(getSelectedRequirementsForCurrentRank());
-  const present = reportData.scouts.filter(s => presentScouts.has(s));
+  const present = reportData.scouts.filter(s => getPresentForRank(currentRank).has(s));
   const date = new Date().toLocaleDateString(undefined, {
     year: "numeric",
     month: "long",
@@ -661,7 +678,7 @@ function openEndOfNightDialog() {
 function getEndOfNightIssues() {
   const issues = [];
 
-  if (!presentScouts.size) {
+  if (!getPresentForRank(currentRank).size) {
     issues.push("No scouts are marked present. In Present Tonight, tap at least one scout so their chip turns green.");
   }
 
@@ -695,10 +712,15 @@ function closeEndOfNightDialog() {
 }
 
 function toggleScout(name) {
-  if (presentScouts.has(name)) {
-    presentScouts.delete(name);
+  const mine = getPresentForRank(currentRank);
+  if (mine.has(name)) {
+    mine.delete(name);
   } else {
-    presentScouts.add(name);
+    // Reassign from any other rank they may already be working with
+    for (const [rank, scouts] of presentByRank) {
+      if (rank !== currentRank) scouts.delete(name);
+    }
+    mine.add(name);
   }
   render();
 }
@@ -746,7 +768,7 @@ async function handleFiles(fileList) {
 
     const rRes = await fetch(`/api/report?rank=${encodeURIComponent(currentRank)}`);
     reportData    = await rRes.json();
-    presentScouts = new Set();
+    presentByRank.clear();
     const ranksRes = await fetch("/api/ranks");
     availableRanks = await ranksRes.json();
     document.getElementById("appBody").classList.remove("hidden");
