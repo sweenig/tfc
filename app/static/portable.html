@@ -52,6 +52,71 @@
       font-weight: 700;
     }
 
+    .header-actions {
+      position: relative;
+    }
+
+    .menu-toggle {
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 8px;
+      background: transparent;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .menu-toggle:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .menu-lines {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .menu-lines span {
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: currentColor;
+      border-radius: 2px;
+    }
+
+    .overflow-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      min-width: 220px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      padding: 6px;
+      z-index: 160;
+    }
+
+    .overflow-action {
+      width: 100%;
+      border: none;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      font-size: 0.86rem;
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    .overflow-action:hover {
+      background: #f3f6fb;
+    }
+
     .content {
       padding: 16px;
       max-width: 960px;
@@ -188,14 +253,10 @@
       flex-shrink: 0;
     }
 
-    .req-item.open .req-chevron { transform: rotate(90deg); }
-
     .req-scouts {
       padding: 0 14px 13px 72px;
-      display: none;
+      display: block;
     }
-
-    .req-item.open .req-scouts { display: block; }
 
     .req-scouts .tag {
       display: inline-block;
@@ -214,31 +275,22 @@
       color: var(--red);
       border: 1px solid #ffcdd2;
     }
-
-    .req-worked-toggle {
-      min-width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 1.5px solid var(--border);
-      background: #fff;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: border-color 0.15s, background 0.15s;
+    .req-scouts .tag.occupied {
+      background: #e5e7eb;
+      color: #6b7280;
+      border: 1px solid #d1d5db;
     }
-
-    .req-worked-toggle:hover {
-      border-color: var(--navy);
-      background: #f8faff;
+    .req-scouts .tag.claimed {
+      background: #1f6e3c;
+      color: #fff;
+      border: 1px solid #166534;
     }
-
-    .req-worked-checkbox {
-      width: 18px;
-      height: 18px;
-      accent-color: var(--navy);
+    .req-scouts .tag.clickable {
       cursor: pointer;
+      user-select: none;
+    }
+    .req-scouts .tag.clickable:hover {
+      opacity: 0.85;
     }
 
     .report-actions {
@@ -386,12 +438,20 @@
 <body>
 <header>
   <h1>Requirements Identifier (Portable)</h1>
+  <div class="header-actions">
+    <button id="overflowMenuToggle" class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="overflowMenu">
+      <span class="menu-lines" aria-hidden="true"><span></span><span></span><span></span></span>
+    </button>
+    <div id="overflowMenu" class="overflow-menu hidden" role="menu">
+      <button id="toggleImportControlsBtn" class="overflow-action" type="button" role="menuitem">Show import controls</button>
+    </div>
+  </div>
 </header>
 
 <div class="content">
   <div id="mainAlert"></div>
 
-  <div class="card">
+  <div class="card" id="importControls">
     <div class="card-title">Session Start</div>
     <a class="download-reports-link" href="https://advancements.scouting.org/reports#custom" target="_blank" rel="noopener noreferrer">Click here to download reports from Scouting.org</a>
     <div class="upload-zone" id="uploadZone">
@@ -414,7 +474,7 @@
 
     <div class="report-actions">
       <button id="copyReportBtn" class="copy-report-btn" type="button">End of Night Report</button>
-      <div class="copy-help">Use the checkboxes on each requirement row to mark what was worked on tonight.</div>
+      <div class="copy-help">Tap scouts under each requirement to claim completed work for tonight.</div>
     </div>
   </div>
 
@@ -450,12 +510,121 @@ const rankReports = new Map();
 let reportData = null;
 let availableRanks = [];
 let currentRank = null;
-const presentByRank              = new Map();
-const selectedRequirementsByRank = new Map();
+let allScouts = [];
+const presentScouts              = new Set();
+const claimedByRank = new Map();
+const claimedByRequirementByRank = new Map();
 
-function getPresentForRank(rank) {
-  if (!presentByRank.has(rank)) presentByRank.set(rank, new Set());
-  return presentByRank.get(rank);
+function setImportControlsVisible(visible) {
+  const card = document.getElementById("importControls");
+  const btn = document.getElementById("toggleImportControlsBtn");
+  if (!card) return;
+  card.classList.toggle("hidden", !visible);
+  if (btn) {
+    btn.textContent = visible ? "Hide import controls" : "Show import controls";
+  }
+}
+
+function closeOverflowMenu() {
+  const menu = document.getElementById("overflowMenu");
+  const toggle = document.getElementById("overflowMenuToggle");
+  if (!menu || !toggle) return;
+  menu.classList.add("hidden");
+  toggle.setAttribute("aria-expanded", "false");
+}
+
+function initOverflowMenu() {
+  const toggle = document.getElementById("overflowMenuToggle");
+  const menu = document.getElementById("overflowMenu");
+  const action = document.getElementById("toggleImportControlsBtn");
+  const card = document.getElementById("importControls");
+
+  if (!toggle || !menu || !action || !card) return;
+
+  setImportControlsVisible(!card.classList.contains("hidden"));
+
+  toggle.addEventListener("click", event => {
+    event.stopPropagation();
+    const isOpen = !menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", isOpen);
+    toggle.setAttribute("aria-expanded", isOpen ? "false" : "true");
+  });
+
+  action.addEventListener("click", () => {
+    const visible = !card.classList.contains("hidden");
+    setImportControlsVisible(!visible);
+    closeOverflowMenu();
+  });
+
+  document.addEventListener("click", event => {
+    if (!menu.classList.contains("hidden") && !menu.contains(event.target) && event.target !== toggle) {
+      closeOverflowMenu();
+    }
+  });
+}
+
+function getClaimedForRank(rank) {
+  if (!claimedByRank.has(rank)) claimedByRank.set(rank, new Set());
+  return claimedByRank.get(rank);
+}
+
+function getClaimsForRequirement(rank, reqName) {
+  let byReq = claimedByRequirementByRank.get(rank);
+  if (!byReq) {
+    byReq = new Map();
+    claimedByRequirementByRank.set(rank, byReq);
+  }
+  let scouts = byReq.get(reqName);
+  if (!scouts) {
+    scouts = new Set();
+    byReq.set(reqName, scouts);
+  }
+  return scouts;
+}
+
+function getClaimedRankForScout(name) {
+  for (const [rank, scouts] of claimedByRank) {
+    if (scouts.has(name)) return rank;
+  }
+  return null;
+}
+
+function clearScoutClaims(name) {
+  for (const scouts of claimedByRank.values()) {
+    scouts.delete(name);
+  }
+  for (const byReq of claimedByRequirementByRank.values()) {
+    for (const scouts of byReq.values()) {
+      scouts.delete(name);
+    }
+  }
+}
+
+function recalcClaimedForRank(rank) {
+  const claimed = getClaimedForRank(rank);
+  claimed.clear();
+  const byReq = claimedByRequirementByRank.get(rank);
+  if (!byReq) return;
+  for (const scouts of byReq.values()) {
+    scouts.forEach(name => claimed.add(name));
+  }
+}
+
+function getEligiblePresentScouts(rank, rankScouts) {
+  return rankScouts.filter(name => {
+    if (!presentScouts.has(name)) return false;
+    const claimedRank = getClaimedRankForScout(name);
+    return claimedRank === null || claimedRank === rank;
+  });
+}
+
+function refreshAllScoutsFromLoadedReports() {
+  const union = new Set();
+  rankReports.forEach(value => {
+    const scouts = value?.report?.scouts || [];
+    scouts.forEach(name => union.add(name));
+  });
+  allScouts = Array.from(union).sort((a, b) => a.localeCompare(b));
 }
 
 const RANK_RE = /^ReportBuilder_[^_]+_(.+)_(\d{8})\.csv$/i;
@@ -604,26 +773,21 @@ function selectRank(rank) {
 function render() {
   if (!reportData) return;
 
-  const selected = getSelectedRequirementsForCurrentRank();
-  const mine = getPresentForRank(currentRank);
-  const present = Array.from(mine);
-
-  const occupiedElsewhere = new Set();
-  for (const [rank, scouts] of presentByRank) {
-    if (rank !== currentRank) scouts.forEach(s => occupiedElsewhere.add(s));
-  }
+  const present = getEligiblePresentScouts(currentRank, reportData.scouts);
+  const attendanceScouts = allScouts.length ? allScouts : reportData.scouts;
 
   const scored = reportData.requirements
     .map(req => {
       const needed = present.filter(s => !req.completed[s]);
-      return { name: req.name, count: needed.length, total: present.length, scouts: needed };
+      return { name: req.name, count: needed.length, total: present.length, scouts: needed, completed: req.completed };
     })
     .filter(r => r.count > 0)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
-  document.getElementById("presentChips").innerHTML = reportData.scouts
+  document.getElementById("presentChips").innerHTML = attendanceScouts
     .map(s => {
-      const cls = mine.has(s) ? "" : occupiedElsewhere.has(s) ? " occupied" : " absent";
+      const claimedRank = getClaimedRankForScout(s);
+      const cls = !presentScouts.has(s) ? " absent" : claimedRank && claimedRank !== currentRank ? " occupied" : "";
       return `<span class="chip${cls}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`;
     })
     .join("");
@@ -641,57 +805,77 @@ function render() {
   }
 
   list.innerHTML = scored.map(r => {
-    const pct = r.total ? r.count / r.total : 0;
+    const claims = getClaimsForRequirement(currentRank, r.name);
     const needsSet = new Set(r.scouts);
-    const needsTags = r.scouts.map(s => `<span class="tag needs">${escHtml(s)}</span>`).join("");
+    const occupiedNeeds = reportData.scouts.filter(s => {
+      if (!presentScouts.has(s)) return false;
+      if (r.completed[s]) return false;
+      const claimedRank = getClaimedRankForScout(s);
+      return claimedRank !== null && claimedRank !== currentRank;
+    });
+    const needsTags = r.scouts.map(s => {
+      const claimedCls = claims.has(s) ? " claimed" : "";
+      return `<span class="tag needs clickable${claimedCls}" data-req-name="${escHtml(r.name)}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`;
+    }).join("");
+    const occupiedTags = occupiedNeeds.map(s => `<span class="tag occupied">${escHtml(s)}</span>`).join("");
     const doneTags  = present.filter(s => !needsSet.has(s)).map(s => `<span class="tag done">${escHtml(s)}</span>`).join("");
     return `
-      <div class="req-item" onclick="toggleReq(this)">
+      <div class="req-item">
         <div class="req-header">
-          <label class="req-worked-toggle" title="Mark worked on tonight">
-            <input
-              type="checkbox"
-              class="req-worked-checkbox"
-              data-req-name="${escHtml(r.name)}"
-              ${selected.has(r.name) ? "checked" : ""}
-              onclick="event.stopPropagation()"
-            >
-          </label>
           <div class="req-info">
             <div class="req-name">${escHtml(r.name)}</div>
             <div class="req-sub">${r.count} of ${r.total} present scouts still need this</div>
           </div>
           <span class="req-chevron">›</span>
         </div>
-        <div class="req-scouts">${needsTags}${doneTags ? ` ${doneTags}` : ""}</div>
+        <div class="req-scouts">${needsTags}${occupiedTags ? ` ${occupiedTags}` : ""}${doneTags ? ` ${doneTags}` : ""}</div>
       </div>`;
   }).join("");
 
-  document.querySelectorAll(".req-worked-checkbox[data-req-name]").forEach(input => {
-    input.addEventListener("change", () => {
-      const reqName = input.dataset.reqName;
-      if (!reqName) return;
-      if (input.checked) {
-        selected.add(reqName);
-      } else {
-        selected.delete(reqName);
-      }
+  document.querySelectorAll(".req-scouts .tag.clickable[data-req-name][data-scout]").forEach(tag => {
+    tag.addEventListener("click", event => {
+      event.stopPropagation();
+      const reqName = tag.dataset.reqName;
+      const scout = tag.dataset.scout;
+      if (!reqName || !scout) return;
+      toggleClaim(reqName, scout);
     });
   });
 }
 
-function getSelectedRequirementsForCurrentRank() {
-  let selected = selectedRequirementsByRank.get(currentRank);
-  if (!selected) {
-    selected = new Set();
-    selectedRequirementsByRank.set(currentRank, selected);
+function getClaimRowsForRank(rank) {
+  const byReq = claimedByRequirementByRank.get(rank);
+  if (!byReq) return [];
+
+  const rows = [];
+  for (const [reqName, scouts] of byReq) {
+    const names = Array.from(scouts).filter(name => presentScouts.has(name)).sort((a, b) => a.localeCompare(b));
+    if (names.length) rows.push({ reqName, names });
   }
-  return selected;
+
+  rows.sort((a, b) => a.reqName.localeCompare(b.reqName));
+  return rows;
+}
+
+function getRanksWithClaims() {
+  const preferredOrder = availableRanks.map(r => r.rank);
+  const seen = new Set(preferredOrder);
+  const ordered = [...preferredOrder];
+
+  for (const rank of claimedByRequirementByRank.keys()) {
+    if (!seen.has(rank)) {
+      ordered.push(rank);
+      seen.add(rank);
+    }
+  }
+
+  return ordered.filter(rank => getClaimRowsForRank(rank).length > 0);
 }
 
 function buildEndOfNightReport() {
-  const selected = Array.from(getSelectedRequirementsForCurrentRank());
-  const present = reportData.scouts.filter(s => getPresentForRank(currentRank).has(s));
+  const attendanceScouts = allScouts.length ? allScouts : reportData.scouts;
+  const present = attendanceScouts.filter(s => presentScouts.has(s));
+  const ranksWithClaims = getRanksWithClaims();
   const date = new Date().toLocaleDateString(undefined, {
     year: "numeric",
     month: "long",
@@ -699,18 +883,28 @@ function buildEndOfNightReport() {
   });
 
   const scoutLines = present.length ? present.map(name => `- ${name}`) : ["- None"];
-  const reqLines = selected.length ? selected.map(req => `- ${req}`) : ["- None selected"];
+  const rankSections = ranksWithClaims.length
+    ? ranksWithClaims.flatMap(rank => {
+        const claimRows = getClaimRowsForRank(rank);
+        const header = [`Rank: ${rank}`];
+        const body = claimRows.flatMap(row => [
+          `- ${row.reqName}`,
+          ...row.names.map(name => `  - ${name}`)
+        ]);
+        return ["", ...header, ...body];
+      })
+    : ["", "No requirement claims were recorded this session."];
 
   return [
     "--- TFC Progress Report ---",
     `Date: ${date}`,
-    `Rank: ${currentRank}`,
+    "Session Scope: Multi-rank",
     "",
     "Scouts Present:",
     ...scoutLines,
     "",
-    "Requirements Worked On:",
-    ...reqLines,
+    "Requirements Completed:",
+    ...rankSections,
     "---------------------------"
   ].join("\n");
 }
@@ -786,12 +980,12 @@ function openEndOfNightDialog() {
 function getEndOfNightIssues() {
   const issues = [];
 
-  if (!getPresentForRank(currentRank).size) {
+  if (!presentScouts.size) {
     issues.push("No scouts are marked present. In Present Tonight, tap at least one scout so their chip turns green.");
   }
 
-  if (!getSelectedRequirementsForCurrentRank().size) {
-    issues.push("No requirements are marked as worked on. Check at least one requirement box in the requirements list.");
+  if (!getRanksWithClaims().length) {
+    issues.push("No requirement claims have been recorded. Expand a requirement and tap the scouts who completed it.");
   }
 
   return issues;
@@ -820,21 +1014,37 @@ function closeEndOfNightDialog() {
 }
 
 function toggleScout(name) {
-  const mine = getPresentForRank(currentRank);
-  if (mine.has(name)) {
-    mine.delete(name);
+  if (presentScouts.has(name)) {
+    presentScouts.delete(name);
+    clearScoutClaims(name);
   } else {
-    // Reassign from any other rank they may already be working with
-    for (const [rank, scouts] of presentByRank) {
-      if (rank !== currentRank) scouts.delete(name);
-    }
-    mine.add(name);
+    presentScouts.add(name);
   }
   render();
 }
 
-function toggleReq(item) {
-  item.classList.toggle("open");
+function toggleClaim(reqName, scout) {
+  if (!presentScouts.has(scout)) return;
+
+  const reqClaims = getClaimsForRequirement(currentRank, reqName);
+  const alreadyClaimedHere = reqClaims.has(scout);
+  const claimedRank = getClaimedRankForScout(scout);
+
+  if (alreadyClaimedHere) {
+    reqClaims.delete(scout);
+    recalcClaimedForRank(currentRank);
+    render();
+    return;
+  }
+
+  if (claimedRank && claimedRank !== currentRank) {
+    clearScoutClaims(scout);
+    recalcClaimedForRank(claimedRank);
+  }
+
+  reqClaims.add(scout);
+  getClaimedForRank(currentRank).add(scout);
+  render();
 }
 
 async function loadFiles(files) {
@@ -844,7 +1054,9 @@ async function loadFiles(files) {
   showAlert("mainAlert", "inf", "Loading CSV files...");
 
   rankReports.clear();
-  selectedRequirementsByRank.clear();
+  claimedByRank.clear();
+  claimedByRequirementByRank.clear();
+  presentScouts.clear();
 
   try {
     for (const file of list) {
@@ -881,12 +1093,12 @@ async function loadFiles(files) {
       throw new Error("No valid rank reports detected in selected files.");
     }
 
+    refreshAllScoutsFromLoadedReports();
     currentRank = availableRanks[0].rank;
     reportData = rankReports.get(currentRank).report;
-    presentByRank.clear();
-
     document.getElementById("idleHelp").classList.add("hidden");
     document.getElementById("appBody").classList.remove("hidden");
+    setImportControlsVisible(false);
 
     renderRankSelector();
     render();
@@ -894,6 +1106,7 @@ async function loadFiles(files) {
     showAlert("mainAlert", "ok", `Loaded ${list.length} file(s). Active rank: <strong>${escHtml(currentRank)}</strong>.`);
   } catch (err) {
     document.getElementById("appBody").classList.add("hidden");
+    setImportControlsVisible(true);
     document.getElementById("idleHelp").classList.remove("hidden");
     showAlert("mainAlert", "err", escHtml(err.message || "Failed to load files."));
   }
@@ -925,6 +1138,7 @@ function wireUpload() {
 }
 
 wireUpload();
+initOverflowMenu();
 
 document.getElementById("copyReportBtn").addEventListener("click", openEndOfNightDialog);
 document.getElementById("dialogCopyBtn").addEventListener("click", copyEndOfNightReport);
@@ -942,6 +1156,7 @@ document.getElementById("validationDialog").addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
+    closeOverflowMenu();
     closeEndOfNightDialog();
     closeValidationDialog();
   }
