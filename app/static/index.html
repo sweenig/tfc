@@ -430,6 +430,10 @@
     .lap-table .cur { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
     .lap-table .total { font-weight: 700; }
     .lap-table .best { color: var(--green); font-weight: 700; }
+    .lap-table input.metric { width: 72px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; text-align: center; }
+    .lap-footer { padding: 4px 14px 24px; }
+    .lap-dialog { z-index: 400; }
+    .lap-table th.sep, .lap-table td.sep { border-left: 2px solid var(--border); }
     .lap-empty { padding: 30px; text-align: center; color: var(--muted); }
   </style>
 </head>
@@ -517,6 +521,19 @@
     <button id="lapCloseBtn" class="lap-btn ghost" type="button">Close</button>
   </div>
   <div class="lap-table-wrap" id="lapTableWrap"></div>
+  <div class="lap-footer"><button id="lapSummaryBtn" class="copy-report-btn" type="button">Generate Summary</button></div>
+</div>
+
+<div id="lapReportDialog" class="modal-backdrop lap-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="lapReportTitle">
+  <div class="modal-card">
+    <div class="card-title" id="lapReportTitle">Lap Timer &amp; Fitness Summary</div>
+    <textarea id="lapReportText" class="report-textbox" readonly></textarea>
+    <div class="modal-actions">
+      <button id="lapReportCopyBtn" class="copy-report-btn" type="button">Copy to Clipboard</button>
+      <button id="lapReportCloseBtn" class="secondary-btn" type="button">Close</button>
+    </div>
+    <div id="lapReportStatus" class="copy-help hidden">Copied!</div>
+  </div>
 </div>
 
 <script>
@@ -1024,10 +1041,12 @@ init();
 // ── Lap timer ─────────────────────────────────────────────────────────────────
 (function () {
   const $ = id => document.getElementById(id);
-  let rows = [];          // {name, laps:[ms], lapStart, finishedAt, total}
+  let rows = [];          // {name, laps:[ms], lapStart, done, total, doneSeq, pushups, situps, reach}
+  const metrics = new Map(); // name -> {pushups, situps, reach}; survives rebuilds
   let startedAt = null;
   let ticker = null;
   let lapTarget = 3;
+  let doneCounter = 0;
 
   function fmt(ms) {
     const t = Math.max(0, Math.round(ms / 100) / 10);
@@ -1042,15 +1061,31 @@ init();
     return names.sort((a, b) => a.localeCompare(b));
   }
 
+  function metricsFor(name) {
+    if (!metrics.has(name)) metrics.set(name, { pushups: "", situps: "", reach: "" });
+    return metrics.get(name);
+  }
+
   function build() {
-    rows = roster().map(name => ({ name, laps: [], lapStart: null, done: false, total: 0 }));
+    rows = roster().map(name => ({ name, laps: [], lapStart: null, done: false, total: 0, doneSeq: 0 }));
     startedAt = null;
+    doneCounter = 0;
     stopTicker();
     lapTarget = Math.max(1, Math.min(20, parseInt($("lapCount").value, 10) || 3));
     $("lapCount").value = lapTarget;
     $("lapStartBtn").disabled = !rows.length;
     $("lapCount").disabled = false;
     draw();
+  }
+
+  // unfinished scouts first (alphabetical), then finished scouts in finishing order
+  function order() {
+    return rows.map((r, i) => i).sort((a, b) => {
+      const ra = rows[a], rb = rows[b];
+      if (ra.done !== rb.done) return ra.done ? 1 : -1;
+      if (ra.done) return ra.doneSeq - rb.doneSeq;
+      return ra.name.localeCompare(rb.name);
+    });
   }
 
   function draw() {
@@ -1061,8 +1096,10 @@ init();
     }
     let head = '<tr><th class="name">Scout</th>';
     for (let i = 1; i <= lapTarget; i++) head += `<th>Lap ${i}</th>`;
-    head += '<th>Total</th><th></th></tr>';
-    const body = rows.map((r, i) => {
+    head += '<th>Total</th><th></th><th class="sep">Push-ups<br>(1 min)</th><th>Sit-ups<br>(1 min)</th><th>Sit &amp; Reach<br>(in)</th></tr>';
+    const body = order().map(i => {
+      const r = rows[i];
+      const m = metricsFor(r.name);
       let tds = "";
       for (let l = 0; l < lapTarget; l++) {
         if (l < r.laps.length) {
@@ -1075,9 +1112,11 @@ init();
         }
       }
       const total = r.done ? fmt(r.total) : (startedAt ? `<span class="live-total" data-i="${i}">0:00.0</span>` : "–");
+      const inp = (key, step) => `<input class="metric" type="number" min="0" step="${step}" inputmode="decimal" data-i="${i}" data-m="${key}" value="${esc(m[key])}">`;
       return `<tr class="${r.done ? "done" : ""}"><td class="name">${esc(r.name)}</td>${tds}` +
              `<td class="total">${total}</td>` +
-             `<td><button class="lap-btn finish" data-finish="${i}" type="button"${(!startedAt || r.done) ? " disabled" : ""}>Finish</button></td></tr>`;
+             `<td><button class="lap-btn finish" data-finish="${i}" type="button"${(!startedAt || r.done) ? " disabled" : ""}>Finish</button></td>` +
+             `<td class="sep">${inp("pushups", 1)}</td><td>${inp("situps", 1)}</td><td>${inp("reach", 0.25)}</td></tr>`;
     }).join("");
     wrap.innerHTML = `<table class="lap-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
     tick();
@@ -1100,6 +1139,7 @@ init();
   function finish(r, now) {
     if (r.done) return;
     r.done = true;
+    r.doneSeq = ++doneCounter;
     r.total = now - startedAt;
     r.lapStart = null;
   }
@@ -1122,14 +1162,17 @@ init();
     r.laps.push(now - r.lapStart);
     r.lapStart = now;
     if (r.laps.length >= lapTarget) finish(r, now);
-    draw();
-    if (rows.every(x => x.done)) stopTicker();
+    redraw();
   }
 
   function finishRow(i) {
     const r = rows[i];
     if (!r || r.done || !startedAt) return;
     finish(r, performance.now());
+    redraw();
+  }
+
+  function redraw() {
     draw();
     if (rows.every(x => x.done)) stopTicker();
   }
@@ -1140,11 +1183,43 @@ init();
     $("lapOverlay").classList.remove("hidden");
   }
 
+  function hasMetrics(name) {
+    const m = metrics.get(name);
+    return !!m && m.pushups !== "" && m.situps !== "" && m.reach !== "";
+  }
+
+  function buildSummary() {
+    const complete = order().map(i => rows[i]).filter(r => r.done && hasMetrics(r.name));
+    const lines = ["Tenderfoot Physical Fitness Summary", ""];
+    if (!complete.length) {
+      lines.push("No scouts have a finished run and all fitness metrics filled in yet.");
+      return lines.join("\n");
+    }
+    complete.forEach(r => {
+      const m = metrics.get(r.name);
+      const lapStr = r.laps.map((t, i) => `Lap ${i + 1} ${fmt(t)}`).join(", ");
+      lines.push(r.name);
+      lines.push(`  Run: ${lapStr || "–"} | Total ${fmt(r.total)}`);
+      lines.push(`  Push-ups (1 min): ${m.pushups}`);
+      lines.push(`  Sit-ups (1 min): ${m.situps}`);
+      lines.push(`  Back-saver sit-and-reach: ${m.reach} in`);
+      lines.push("");
+    });
+    return lines.join("\n").trimEnd();
+  }
+
+  function openSummary() {
+    $("lapReportText").value = buildSummary();
+    $("lapReportStatus").classList.add("hidden");
+    $("lapReportDialog").classList.remove("hidden");
+  }
+  function closeSummary() { $("lapReportDialog").classList.add("hidden"); }
+
   $("openLapTimerBtn").addEventListener("click", open);
   $("lapCloseBtn").addEventListener("click", () => $("lapOverlay").classList.add("hidden"));
   $("lapStartBtn").addEventListener("click", start);
   $("lapResetBtn").addEventListener("click", () => {
-    if (startedAt && !confirm("Reset the timer and discard all recorded laps?")) return;
+    if (startedAt && !confirm("Reset the timer and discard all recorded laps? Fitness metrics are kept.")) return;
     build();
   });
   $("lapCount").addEventListener("change", build);
@@ -1153,6 +1228,24 @@ init();
     if (!b) return;
     if (b.dataset.lap != null) lap(+b.dataset.lap);
     else if (b.dataset.finish != null) finishRow(+b.dataset.finish);
+  });
+  $("lapTableWrap").addEventListener("input", e => {
+    const el = e.target;
+    if (!el.dataset || !el.dataset.m) return;
+    metricsFor(rows[+el.dataset.i].name)[el.dataset.m] = el.value.trim();
+  });
+  $("lapSummaryBtn").addEventListener("click", openSummary);
+  $("lapReportCloseBtn").addEventListener("click", closeSummary);
+  $("lapReportDialog").addEventListener("click", e => { if (e.target.id === "lapReportDialog") closeSummary(); });
+  $("lapReportCopyBtn").addEventListener("click", async () => {
+    const status = $("lapReportStatus");
+    try {
+      await writeToClipboard($("lapReportText").value);
+      status.textContent = "Copied!";
+    } catch (err) {
+      status.textContent = `Unable to copy: ${err?.message || "Clipboard unavailable."}`;
+    }
+    status.classList.remove("hidden");
   });
 })();
 </script>
