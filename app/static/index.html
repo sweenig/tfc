@@ -182,10 +182,6 @@
       background: #fff0f0;
       color: var(--red);
     }
-    .chip.occupied {
-      background: #e5e7eb;
-      color: #9ca3af;
-    }
 
     /* ── Requirements ────────────────────────────────────────────────── */
     .section-label {
@@ -257,11 +253,6 @@
       background: #fff0f0;
       color: var(--red);
       border: 1px solid #ffcdd2;
-    }
-    .req-scouts .tag.occupied {
-      background: #e5e7eb;
-      color: #6b7280;
-      border: 1px solid #d1d5db;
     }
     .req-scouts .tag.claimed {
       background: #1f6e3c;
@@ -416,6 +407,30 @@
       .content { padding: 12px; }
       .req-scouts { padding-left: 14px; }
     }
+
+    /* ── Lap timer ──────────────────────────────────────────────────── */
+    .lap-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 300; overflow: auto; }
+    .lap-bar { background: var(--navy); color: #fff; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; position: sticky; top: 0; z-index: 2; }
+    .lap-bar h2 { font-size: 1.05rem; flex: 1 1 auto; }
+    .lap-bar label { font-size: .85rem; display: flex; align-items: center; gap: 6px; }
+    .lap-bar input[type=number] { width: 56px; padding: 6px; border-radius: 6px; border: none; font-size: 1rem; }
+    .lap-btn { border: none; border-radius: 8px; padding: 9px 16px; font-size: .9rem; font-weight: 700; cursor: pointer; color: #fff; background: var(--navy-light); }
+    .lap-btn.start { background: var(--green); font-size: 1rem; }
+    .lap-btn.lap { background: var(--navy); min-width: 64px; }
+    .lap-btn.finish { background: var(--red); }
+    .lap-btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,.5); }
+    .lap-btn:disabled { opacity: .35; cursor: default; }
+    .lap-table-wrap { padding: 14px; overflow-x: auto; }
+    table.lap-table { border-collapse: collapse; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; }
+    .lap-table th, .lap-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .lap-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .lap-table td.name, .lap-table th.name { text-align: left; font-weight: 600; position: sticky; left: 0; background: var(--surface); }
+    .lap-table td.running { background: var(--amber-light); }
+    .lap-table tr.done td { background: var(--green-light); }
+    .lap-table .cur { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+    .lap-table .total { font-weight: 700; }
+    .lap-table .best { color: var(--green); font-weight: 700; }
+    .lap-empty { padding: 30px; text-align: center; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -429,6 +444,7 @@
     </button>
     <div id="overflowMenu" class="overflow-menu hidden" role="menu">
       <button id="toggleImportControlsBtn" class="overflow-action" type="button" role="menuitem">Show import controls</button>
+      <button id="openLapTimerBtn" class="overflow-action" type="button" role="menuitem">Lap Timer</button>
     </div>
   </div>
 </header>
@@ -492,6 +508,17 @@
 </div>
 
 <!-- ═══════════════════════ SCRIPT ═══════════════════════ -->
+<div id="lapOverlay" class="lap-overlay hidden" role="dialog" aria-modal="true" aria-label="Lap Timer">
+  <div class="lap-bar">
+    <h2>Lap Timer</h2>
+    <label>Laps <input id="lapCount" type="number" min="1" max="20" value="3" inputmode="numeric"></label>
+    <button id="lapStartBtn" class="lap-btn start" type="button">Start</button>
+    <button id="lapResetBtn" class="lap-btn ghost" type="button">Reset</button>
+    <button id="lapCloseBtn" class="lap-btn ghost" type="button">Close</button>
+  </div>
+  <div class="lap-table-wrap" id="lapTableWrap"></div>
+</div>
+
 <script>
 "use strict";
 
@@ -500,7 +527,6 @@ let availableRanks = [];
 let currentRank    = null;
 let allScouts      = [];
 const presentScouts            = new Set();
-const claimedByRank = new Map();
 const claimedByRequirementByRank = new Map();
 
 function setImportControlsVisible(visible) {
@@ -551,11 +577,6 @@ function initOverflowMenu() {
   });
 }
 
-function getClaimedForRank(rank) {
-  if (!claimedByRank.has(rank)) claimedByRank.set(rank, new Set());
-  return claimedByRank.get(rank);
-}
-
 function getClaimsForRequirement(rank, reqName) {
   let byReq = claimedByRequirementByRank.get(rank);
   if (!byReq) {
@@ -570,40 +591,12 @@ function getClaimsForRequirement(rank, reqName) {
   return scouts;
 }
 
-function getClaimedRankForScout(name) {
-  for (const [rank, scouts] of claimedByRank) {
-    if (scouts.has(name)) return rank;
-  }
-  return null;
-}
-
 function clearScoutClaims(name) {
-  for (const scouts of claimedByRank.values()) {
-    scouts.delete(name);
-  }
   for (const byReq of claimedByRequirementByRank.values()) {
     for (const scouts of byReq.values()) {
       scouts.delete(name);
     }
   }
-}
-
-function recalcClaimedForRank(rank) {
-  const claimed = getClaimedForRank(rank);
-  claimed.clear();
-  const byReq = claimedByRequirementByRank.get(rank);
-  if (!byReq) return;
-  for (const scouts of byReq.values()) {
-    scouts.forEach(name => claimed.add(name));
-  }
-}
-
-function getEligiblePresentScouts(rank, rankScouts) {
-  return rankScouts.filter(name => {
-    if (!presentScouts.has(name)) return false;
-    const claimedRank = getClaimedRankForScout(name);
-    return claimedRank === null || claimedRank === rank;
-  });
 }
 
 async function refreshAllScoutsFromRanks() {
@@ -674,7 +667,7 @@ async function selectRank(rank) {
 // ── Render ────────────────────────────────────────────────────────────────────
 
 function render() {
-  const present = getEligiblePresentScouts(currentRank, reportData.scouts);
+  const present = reportData.scouts.filter(s => presentScouts.has(s));
   const attendanceScouts = allScouts.length ? allScouts : reportData.scouts;
 
   // Score each requirement by how many present scouts still need it
@@ -686,11 +679,9 @@ function render() {
     .filter(r => r.count > 0)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
-  // All scouts as toggleable chips — green = working here, gray = occupied elsewhere, red = available
   document.getElementById("presentChips").innerHTML = attendanceScouts
     .map(s => {
-      const claimedRank = getClaimedRankForScout(s);
-      const cls = !presentScouts.has(s) ? " absent" : claimedRank && claimedRank !== currentRank ? " occupied" : "";
+      const cls = presentScouts.has(s) ? "" : " absent";
       return `<span class="chip${cls}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`;
     })
     .join("");
@@ -710,17 +701,10 @@ function render() {
   list.innerHTML = scored.map(r => {
     const claims = getClaimsForRequirement(currentRank, r.name);
     const needsSet = new Set(r.scouts);
-    const occupiedNeeds = reportData.scouts.filter(s => {
-      if (!presentScouts.has(s)) return false;
-      if (r.completed[s]) return false;
-      const claimedRank = getClaimedRankForScout(s);
-      return claimedRank !== null && claimedRank !== currentRank;
-    });
     const needsTags = r.scouts.map(s => {
       const claimedCls = claims.has(s) ? " claimed" : "";
       return `<span class="tag needs clickable${claimedCls}" data-req-name="${escHtml(r.name)}" data-scout="${escHtml(s)}">${escHtml(s)}</span>`;
     }).join("");
-    const occupiedTags = occupiedNeeds.map(s => `<span class="tag occupied">${escHtml(s)}</span>`).join("");
     const doneTags  = present.filter(s => !needsSet.has(s)).map(s => `<span class="tag done">${escHtml(s)}</span>`).join("");
     return `
       <div class="req-item">
@@ -731,7 +715,7 @@ function render() {
           </div>
           <span class="req-chevron">›</span>
         </div>
-        <div class="req-scouts">${needsTags}${occupiedTags ? ` ${occupiedTags}` : ""}${doneTags ? ` ${doneTags}` : ""}</div>
+        <div class="req-scouts">${needsTags}${doneTags ? ` ${doneTags}` : ""}</div>
       </div>`;
   }).join("");
 
@@ -930,23 +914,11 @@ function toggleClaim(reqName, scout) {
   if (!presentScouts.has(scout)) return;
 
   const reqClaims = getClaimsForRequirement(currentRank, reqName);
-  const alreadyClaimedHere = reqClaims.has(scout);
-  const claimedRank = getClaimedRankForScout(scout);
-
-  if (alreadyClaimedHere) {
+  if (reqClaims.has(scout)) {
     reqClaims.delete(scout);
-    recalcClaimedForRank(currentRank);
-    render();
-    return;
+  } else {
+    reqClaims.add(scout);
   }
-
-  if (claimedRank && claimedRank !== currentRank) {
-    clearScoutClaims(scout);
-    recalcClaimedForRank(claimedRank);
-  }
-
-  reqClaims.add(scout);
-  getClaimedForRank(currentRank).add(scout);
   render();
 }
 
@@ -988,7 +960,6 @@ async function handleFiles(fileList) {
     document.getElementById("fileInput").value = "";
 
     presentScouts.clear();
-    claimedByRank.clear();
     claimedByRequirementByRank.clear();
 
     const ranksRes = await fetch("/api/ranks");
@@ -1049,6 +1020,141 @@ document.addEventListener("keydown", e => {
 });
 
 init();
+
+// ── Lap timer ─────────────────────────────────────────────────────────────────
+(function () {
+  const $ = id => document.getElementById(id);
+  let rows = [];          // {name, laps:[ms], lapStart, finishedAt, total}
+  let startedAt = null;
+  let ticker = null;
+  let lapTarget = 3;
+
+  function fmt(ms) {
+    const t = Math.max(0, Math.round(ms / 100) / 10);
+    const m = Math.floor(t / 60);
+    const s = (t - m * 60).toFixed(1).padStart(4, "0");
+    return `${m}:${s}`;
+  }
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+  function roster() {
+    const names = presentScouts.size ? Array.from(presentScouts) : allScouts.slice();
+    return names.sort((a, b) => a.localeCompare(b));
+  }
+
+  function build() {
+    rows = roster().map(name => ({ name, laps: [], lapStart: null, done: false, total: 0 }));
+    startedAt = null;
+    stopTicker();
+    lapTarget = Math.max(1, Math.min(20, parseInt($("lapCount").value, 10) || 3));
+    $("lapCount").value = lapTarget;
+    $("lapStartBtn").disabled = !rows.length;
+    $("lapCount").disabled = false;
+    draw();
+  }
+
+  function draw() {
+    const wrap = $("lapTableWrap");
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="lap-empty">No scouts loaded yet. Load a report (and optionally mark attendance) first.</div>';
+      return;
+    }
+    let head = '<tr><th class="name">Scout</th>';
+    for (let i = 1; i <= lapTarget; i++) head += `<th>Lap ${i}</th>`;
+    head += '<th>Total</th><th></th></tr>';
+    const body = rows.map((r, i) => {
+      let tds = "";
+      for (let l = 0; l < lapTarget; l++) {
+        if (l < r.laps.length) {
+          tds += `<td>${fmt(r.laps[l])}</td>`;
+        } else if (l === r.laps.length && startedAt && !r.done) {
+          tds += `<td class="running"><span class="cur"><span class="live" data-i="${i}">0:00.0</span>` +
+                 `<button class="lap-btn lap" data-lap="${i}" type="button">Lap</button></span></td>`;
+        } else {
+          tds += "<td>–</td>";
+        }
+      }
+      const total = r.done ? fmt(r.total) : (startedAt ? `<span class="live-total" data-i="${i}">0:00.0</span>` : "–");
+      return `<tr class="${r.done ? "done" : ""}"><td class="name">${esc(r.name)}</td>${tds}` +
+             `<td class="total">${total}</td>` +
+             `<td><button class="lap-btn finish" data-finish="${i}" type="button"${(!startedAt || r.done) ? " disabled" : ""}>Finish</button></td></tr>`;
+    }).join("");
+    wrap.innerHTML = `<table class="lap-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+    tick();
+  }
+
+  function tick() {
+    if (!startedAt) return;
+    const now = performance.now();
+    document.querySelectorAll("#lapTableWrap .live").forEach(el => {
+      const r = rows[+el.dataset.i];
+      if (r && r.lapStart != null) el.textContent = fmt(now - r.lapStart);
+    });
+    document.querySelectorAll("#lapTableWrap .live-total").forEach(el => {
+      el.textContent = fmt(now - startedAt);
+    });
+  }
+  function startTicker() { stopTicker(); ticker = setInterval(tick, 100); }
+  function stopTicker() { if (ticker) clearInterval(ticker); ticker = null; }
+
+  function finish(r, now) {
+    if (r.done) return;
+    r.done = true;
+    r.total = now - startedAt;
+    r.lapStart = null;
+  }
+
+  function start() {
+    if (startedAt) return;
+    lapTarget = Math.max(1, Math.min(20, parseInt($("lapCount").value, 10) || 3));
+    startedAt = performance.now();
+    rows.forEach(r => { r.lapStart = startedAt; });
+    $("lapStartBtn").disabled = true;
+    $("lapCount").disabled = true;
+    draw();
+    startTicker();
+  }
+
+  function lap(i) {
+    const r = rows[i];
+    if (!r || r.done || !startedAt) return;
+    const now = performance.now();
+    r.laps.push(now - r.lapStart);
+    r.lapStart = now;
+    if (r.laps.length >= lapTarget) finish(r, now);
+    draw();
+    if (rows.every(x => x.done)) stopTicker();
+  }
+
+  function finishRow(i) {
+    const r = rows[i];
+    if (!r || r.done || !startedAt) return;
+    finish(r, performance.now());
+    draw();
+    if (rows.every(x => x.done)) stopTicker();
+  }
+
+  function open() {
+    if (typeof closeOverflowMenu === "function") closeOverflowMenu();
+    if (!startedAt) build();
+    $("lapOverlay").classList.remove("hidden");
+  }
+
+  $("openLapTimerBtn").addEventListener("click", open);
+  $("lapCloseBtn").addEventListener("click", () => $("lapOverlay").classList.add("hidden"));
+  $("lapStartBtn").addEventListener("click", start);
+  $("lapResetBtn").addEventListener("click", () => {
+    if (startedAt && !confirm("Reset the timer and discard all recorded laps?")) return;
+    build();
+  });
+  $("lapCount").addEventListener("change", build);
+  $("lapTableWrap").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.lap != null) lap(+b.dataset.lap);
+    else if (b.dataset.finish != null) finishRow(+b.dataset.finish);
+  });
+})();
 </script>
 </body>
 </html>
