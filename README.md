@@ -9,6 +9,7 @@ This project now supports multiple deployment models: private Docker + [Tailscal
 - **Upload reports** — load ScoutBook CSV exports in-app
 - **Take attendance quickly** — tap scout chips to mark present/absent
 - **Ranked recommendations** — requirements sorted by how many present scouts still need them, with names listed per requirement
+- **Car seat assignments** — menu → **Car Seats**: add cars (driver + empty seats), drag scouts from All Scouts → Going on the Trip → a car (tap a chip to move it quickly), then copy a summary
 - **Two app modes** — backend-assisted mode (`index.html`) and fully portable client-only mode (`portable.html`)
 
 ## Stack
