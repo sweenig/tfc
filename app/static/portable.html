@@ -455,6 +455,40 @@
     .lap-dialog { z-index: 400; }
     .lap-table th.sep, .lap-table td.sep { border-left: 2px solid var(--border); }
     .lap-empty { padding: 30px; text-align: center; color: var(--muted); }
+
+    /* ── Car seat assignments ───────────────────────────────────────── */
+    .cs-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 300; overflow: auto; }
+    .cs-bar { background: var(--navy); color: #fff; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; position: sticky; top: 0; z-index: 5; }
+    .cs-bar h2 { font-size: 1.05rem; flex: 1 1 auto; }
+    .cs-msg { flex-basis: 100%; font-size: .82rem; color: #fde68a; min-height: 1em; }
+    .cs-body { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 14px; padding: 14px; align-items: start; max-width: 1200px; margin: 0 auto; }
+    .cs-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .cs-box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; border: 2px solid transparent; transition: border-color .12s, background .12s; }
+    .cs-box.over { border-color: var(--navy); background: #f0f4ff; }
+    .cs-box.full { border-color: var(--green); }
+    .cs-box-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .cs-box-head .card-title { margin: 0; flex: 1 1 auto; }
+    .cs-count { font-size: .78rem; font-weight: 700; color: var(--muted); }
+    .cs-count.full { color: var(--green); }
+    .cs-drop { display: flex; flex-wrap: wrap; gap: 6px; min-height: 44px; align-content: flex-start; }
+    .cs-empty { color: var(--muted); font-size: .82rem; font-style: italic; align-self: center; }
+    .cs-chip { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 100px; font-size: .82rem; font-weight: 600; background: var(--green-light); color: var(--green); cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
+    .cs-chip.going { background: #e0e9fb; color: var(--navy); }
+    .cs-chip.seated { background: var(--navy); color: #fff; }
+    .cs-chip.dragging { opacity: .35; }
+    .cs-ghost { position: fixed; z-index: 1000; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.3); transform: translate(-50%, -50%); cursor: grabbing; }
+    .cs-cars { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+    .cs-car-name { font-weight: 700; font-size: .95rem; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .cs-icon-btn { border: 1px solid var(--border); background: #fff; border-radius: 6px; width: 28px; height: 28px; font-size: 1rem; font-weight: 700; line-height: 1; cursor: pointer; color: var(--text); }
+    .cs-icon-btn:disabled { opacity: .35; cursor: default; }
+    .cs-icon-btn.danger { color: var(--red); }
+    .cs-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .cs-form label { display: flex; flex-direction: column; gap: 3px; font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .cs-form input { padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; }
+    .cs-form input[type=text] { width: 190px; }
+    .cs-form input[type=number] { width: 70px; }
+    .cs-cars-empty { color: var(--muted); font-size: .9rem; padding: 6px 0; }
+    @media (max-width: 760px) { .cs-body { grid-template-columns: 1fr; padding: 10px; } .cs-form input[type=text] { width: 100%; } .cs-form label:first-child { flex: 1 1 100%; } }
   </style>
 </head>
 <body>
@@ -467,6 +501,7 @@
     <div id="overflowMenu" class="overflow-menu hidden" role="menu">
       <button id="toggleImportControlsBtn" class="overflow-action" type="button" role="menuitem">Show import controls</button>
       <button id="openLapTimerBtn" class="overflow-action" type="button" role="menuitem">Lap Timer</button>
+      <button id="openCarSeatsBtn" class="overflow-action" type="button" role="menuitem">Car Seats</button>
     </div>
   </div>
 </header>
@@ -536,6 +571,42 @@
   </div>
   <div class="lap-table-wrap" id="lapTableWrap"></div>
   <div class="lap-footer"><button id="lapSummaryBtn" class="copy-report-btn" type="button">Generate Summary</button></div>
+</div>
+
+<div id="csOverlay" class="cs-overlay hidden" role="dialog" aria-modal="true" aria-label="Car Seat Assignments">
+  <div class="cs-bar">
+    <h2>Car Seat Assignments</h2>
+    <button id="csCopyBtn" class="lap-btn" type="button">Copy Summary</button>
+    <button id="csResetBtn" class="lap-btn ghost" type="button">Reset</button>
+    <button id="csCloseBtn" class="lap-btn ghost" type="button">Close</button>
+    <div id="csMsg" class="cs-msg" role="status"></div>
+  </div>
+  <div class="cs-body">
+    <div class="cs-col">
+      <div class="cs-box" data-zone="roster">
+        <div class="cs-box-head"><div class="card-title">All Scouts</div><span class="cs-count" id="csRosterCount"></span></div>
+        <div class="cs-drop" id="csRoster"></div>
+      </div>
+      <div class="cs-box" data-zone="going">
+        <div class="cs-box-head">
+          <div class="card-title">Going on the Trip</div><span class="cs-count" id="csGoingCount"></span>
+          <button id="csAddPresentBtn" class="secondary-btn" type="button" style="padding:5px 9px;font-size:.74rem">+ Present</button>
+        </div>
+        <div class="cs-drop" id="csGoing"></div>
+      </div>
+    </div>
+    <div class="cs-col">
+      <div class="card" style="margin:0">
+        <div class="card-title">Add a Car</div>
+        <form class="cs-form" id="csForm" autocomplete="off">
+          <label>Driver<input id="csDriver" type="text" maxlength="60" placeholder="e.g. Mr. Smith" required></label>
+          <label>Empty seats<input id="csSeats" type="number" min="1" max="20" value="4" inputmode="numeric" required></label>
+          <button class="copy-report-btn" type="submit" style="margin:0">Add Car</button>
+        </form>
+      </div>
+      <div class="cs-cars" id="csCars"></div>
+    </div>
+  </div>
 </div>
 
 <div id="lapReportDialog" class="modal-backdrop lap-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="lapReportTitle">
@@ -1363,6 +1434,216 @@ document.addEventListener("keydown", e => {
     }
     status.classList.remove("hidden");
   });
+})();
+
+// ── Car seat assignments ──────────────────────────────────────────────────────
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  let cars = [];               // {id, driver, seats}  seats = empty seats available to scouts
+  let nextCarId = 1;
+  const going = new Set();     // scouts on the trip
+  const carOf = new Map();     // scout -> car id
+  let msgTimer = null;
+
+  const byName = (a, b) => a.localeCompare(b);
+  const riders = id => Array.from(carOf).filter(([, c]) => c === id).map(([n]) => n).sort(byName);
+
+  function say(text) {
+    $("csMsg").textContent = text || "";
+    clearTimeout(msgTimer);
+    if (text) msgTimer = setTimeout(() => { $("csMsg").textContent = ""; }, 3500);
+  }
+
+  function chip(name, cls) {
+    return `<span class="cs-chip ${cls}" data-name="${esc(name)}">${esc(name)}</span>`;
+  }
+
+  function draw() {
+    const everyone = allScouts.slice().sort(byName);
+    const rosterNames = everyone.filter(n => !going.has(n));
+    const loose = everyone.filter(n => going.has(n) && !carOf.has(n));
+
+    $("csRoster").innerHTML = rosterNames.length ? rosterNames.map(n => chip(n, "")).join("")
+      : '<span class="cs-empty">Everyone is going.</span>';
+    $("csRosterCount").textContent = rosterNames.length;
+
+    $("csGoing").innerHTML = loose.length ? loose.map(n => chip(n, "going")).join("")
+      : `<span class="cs-empty">${going.size ? "Everyone going has a seat." : "Drag scouts here from All Scouts."}</span>`;
+    $("csGoingCount").textContent = `${loose.length} unassigned · ${going.size} going`;
+
+    const seatsLeft = cars.reduce((t, c) => t + c.seats - riders(c.id).length, 0);
+    $("csCars").innerHTML = cars.length ? cars.map(c => {
+      const r = riders(c.id);
+      const left = c.seats - r.length;
+      return `<div class="cs-box${left === 0 ? " full" : ""}" data-zone="car:${c.id}">
+        <div class="cs-box-head">
+          <div class="cs-car-name">${esc(c.driver)}</div>
+          <span class="cs-count${left === 0 ? " full" : ""}">${r.length}/${c.seats}</span>
+          <button class="cs-icon-btn" data-seats="-1" data-car="${c.id}" type="button" aria-label="Remove a seat"${c.seats <= r.length || c.seats <= 1 ? " disabled" : ""}>−</button>
+          <button class="cs-icon-btn" data-seats="1" data-car="${c.id}" type="button" aria-label="Add a seat"${c.seats >= 20 ? " disabled" : ""}>+</button>
+          <button class="cs-icon-btn danger" data-remove="${c.id}" type="button" aria-label="Remove car">✕</button>
+        </div>
+        <div class="cs-drop">${r.length ? r.map(n => chip(n, "seated")).join("") : `<span class="cs-empty">${c.seats} empty seat${c.seats === 1 ? "" : "s"}</span>`}</div>
+      </div>`;
+    }).join("") : '<div class="cs-cars-empty">Add a car above, then drag scouts into it.</div>';
+
+    if (cars.length && going.size && seatsLeft < loose.length) {
+      say(`Short ${loose.length - seatsLeft} seat${loose.length - seatsLeft === 1 ? "" : "s"} — ${loose.length} unassigned, ${seatsLeft} open.`);
+    }
+  }
+
+  function moveTo(name, zone) {
+    if (zone === "roster") {
+      going.delete(name); carOf.delete(name);
+    } else if (zone === "going") {
+      going.add(name); carOf.delete(name);
+    } else if (zone.startsWith("car:")) {
+      const id = +zone.slice(4);
+      const car = cars.find(c => c.id === id);
+      if (!car) return;
+      if (carOf.get(name) !== id && riders(id).length >= car.seats) {
+        say(`${car.driver}'s car is full (${car.seats} seat${car.seats === 1 ? "" : "s"}).`);
+        return;
+      }
+      going.add(name); carOf.set(name, id);
+    }
+    draw();
+  }
+
+  // Tap (no drag) shortcuts: roster → going, going → roster, car → going
+  function tap(name) {
+    if (carOf.has(name)) moveTo(name, "going");
+    else if (going.has(name)) moveTo(name, "roster");
+    else moveTo(name, "going");
+  }
+
+  // ── Pointer-based drag and drop (works for mouse, touch and pen) ────────────
+  let drag = null;
+  let hot = null;
+
+  function zoneAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest("#csOverlay [data-zone]") : null;
+  }
+  function setHot(z) {
+    if (hot === z) return;
+    if (hot) hot.classList.remove("over");
+    hot = z;
+    if (hot) hot.classList.add("over");
+  }
+  function endDrag() {
+    if (drag) {
+      drag.chip.classList.remove("dragging");
+      if (drag.ghost) drag.ghost.remove();
+    }
+    setHot(null);
+    drag = null;
+  }
+
+  $("csOverlay").addEventListener("pointerdown", e => {
+    const chipEl = e.target.closest(".cs-chip");
+    if (!chipEl || (e.pointerType === "mouse" && e.button !== 0)) return;
+    drag = { name: chipEl.dataset.name, chip: chipEl, x: e.clientX, y: e.clientY, ghost: null, id: e.pointerId };
+  });
+
+  document.addEventListener("pointermove", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.ghost) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+      drag.ghost = drag.chip.cloneNode(true);
+      drag.ghost.classList.add("cs-ghost");
+      document.body.appendChild(drag.ghost);
+      drag.chip.classList.add("dragging");
+    }
+    drag.ghost.style.left = e.clientX + "px";
+    drag.ghost.style.top = e.clientY + "px";
+    setHot(zoneAt(e.clientX, e.clientY));
+  });
+
+  document.addEventListener("pointerup", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const { name, ghost } = drag;
+    const zone = ghost ? zoneAt(e.clientX, e.clientY) : null;
+    endDrag();
+    if (!ghost) tap(name);
+    else if (zone) moveTo(name, zone.dataset.zone);
+  });
+  document.addEventListener("pointercancel", endDrag);
+
+  // ── Cars ────────────────────────────────────────────────────────────────────
+  $("csForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const driver = $("csDriver").value.trim();
+    const seats = Math.max(1, Math.min(20, parseInt($("csSeats").value, 10) || 0));
+    if (!driver || !seats) return;
+    cars.push({ id: nextCarId++, driver, seats });
+    $("csDriver").value = "";
+    $("csDriver").focus();
+    draw();
+  });
+
+  $("csCars").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.seats) {
+      const car = cars.find(c => c.id === +b.dataset.car);
+      if (car) car.seats = Math.max(1, Math.min(20, car.seats + +b.dataset.seats));
+    } else if (b.dataset.remove) {
+      const id = +b.dataset.remove;
+      const car = cars.find(c => c.id === id);
+      const n = riders(id).length;
+      if (n && !confirm(`Remove ${car.driver}'s car? Its ${n} scout${n === 1 ? "" : "s"} will go back to the unassigned list.`)) return;
+      riders(id).forEach(name => carOf.delete(name));
+      cars = cars.filter(c => c.id !== id);
+    }
+    draw();
+  });
+
+  $("csAddPresentBtn").addEventListener("click", () => {
+    if (!presentScouts.size) { say("No scouts are marked present on the main screen."); return; }
+    presentScouts.forEach(n => going.add(n));
+    draw();
+  });
+
+  // ── Summary / lifecycle ─────────────────────────────────────────────────────
+  function buildSummary() {
+    const date = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    const lines = ["--- Car Assignments ---", `Date: ${date}`, ""];
+    if (!cars.length) lines.push("No cars added.", "");
+    cars.forEach(c => {
+      const r = riders(c.id);
+      lines.push(`${c.driver} (${r.length}/${c.seats} seats)`);
+      if (r.length) r.forEach(n => lines.push(`  - ${n}`)); else lines.push("  - (empty)");
+      lines.push("");
+    });
+    const loose = Array.from(going).filter(n => !carOf.has(n)).sort(byName);
+    if (loose.length) { lines.push("Going, no car yet:"); loose.forEach(n => lines.push(`  - ${n}`)); lines.push(""); }
+    lines.push("-----------------------");
+    return lines.join("\n");
+  }
+
+  $("csCopyBtn").addEventListener("click", async () => {
+    try { await writeToClipboard(buildSummary()); say("Copied!"); }
+    catch (err) { say(`Unable to copy: ${err?.message || "Clipboard unavailable."}`); }
+  });
+
+  $("csResetBtn").addEventListener("click", () => {
+    if ((cars.length || going.size) && !confirm("Clear all cars and trip assignments?")) return;
+    cars = []; going.clear(); carOf.clear();
+    draw();
+  });
+
+  $("openCarSeatsBtn").addEventListener("click", () => {
+    if (typeof closeOverflowMenu === "function") closeOverflowMenu();
+    // Drop anyone who is no longer in the loaded roster (e.g. after a new upload)
+    const known = new Set(allScouts);
+    Array.from(going).forEach(n => { if (!known.has(n)) { going.delete(n); carOf.delete(n); } });
+    $("csOverlay").classList.remove("hidden");
+    draw();
+  });
+  $("csCloseBtn").addEventListener("click", () => $("csOverlay").classList.add("hidden"));
 })();
 </script>
 </body>
